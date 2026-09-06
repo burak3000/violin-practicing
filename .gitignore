@@ -1,0 +1,97 @@
+# temp planning docs (not part of the shipped repo)
+temp/
+
+# CodeGraph's local code-intelligence index — regenerable via `codegraph init`/
+# `codegraph sync`, not meant to be version controlled (akin to a build cache).
+.codegraph/
+
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+*.tgz
+
+# Electron / Vite
+.vite/
+
+# Expo / React Native / Metro
+.expo/
+.expo-shared/
+.metro-health-check*
+web-build/
+expo-env.d.ts
+/apps/mobile/ios/
+/apps/mobile/android/
+*.orig.*
+
+# native build artifacts (CMake / C++) — packages/dsp-native
+packages/dsp-native/build/
+# defensive net in case cmake is ever run in-source instead of -B build
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+
+# packages/dsp-native Phase 1 validation harness's own regenerated summary
+# output (ctest re-derives this every run, deterministic) — not checked in.
+# Real fixtures (test/fixtures/iowa/*.{wav,aif}, test/fixtures/user-violin/*.wav
+# once added), the synthetic fixtures below, and the hand-authored
+# RESULTS.md/CLAUDE.md ARE checked in.
+packages/dsp-native/test/results/
+
+# NOTE: test/fixtures/synthetic/*.wav (68 files, ~13MB) were gitignored here
+# through Phase 7 on the theory that `generate_synthetic_fixtures` regenerates
+# them deterministically before every `ctest` run, so there was no need to
+# check them in. As of Phase 8, `packages/dsp-ts`'s own conformance suite
+# (src/conformance.test.ts) also reads these same WAV files directly via a
+# plain `pnpm test` — a JS/Vitest-only path that never invokes the CMake/CTest
+# build — so they must now be checked in for that suite to pass on a fresh
+# clone without first running `pnpm build:dsp-native && pnpm test:dsp-native`.
+# Do not re-add a `packages/dsp-native/test/fixtures/synthetic/` ignore line
+# without first checking whether packages/dsp-ts's conformance suite still
+# depends on them.
+
+# signing / credentials — never commit these
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+credentials.json
+
+# test coverage
+coverage/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# lint/tool caches
+.eslintcache
+
+# OS
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+
+# env
+.env
+.env.local
+.env.*.local

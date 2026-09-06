@@ -1,0 +1,34 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Root tsconfig.base.json's "lib" is ES2022 only (no DOM) -- packages/core
+    // and packages/dsp-native never need it. This app's renderer/main-thread
+    // code (device-enumeration.ts, capture-pipeline.ts, renderer.ts) is the
+    // first thing in the repo that does (navigator.mediaDevices, AudioContext,
+    // document, ...), starting Phase 3.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "noEmit": true
+  },
+  // pitch-worklet-processor.ts runs inside AudioWorkletGlobalScope, a
+  // DIFFERENT global scope than the renderer's (no DOM, custom globals like
+  // `registerProcessor`/`sampleRate` instead) -- typechecking it under this
+  // project's DOM lib would both wrongly allow DOM references inside it AND
+  // collide with its own ambient globals (see audioworklet-globals.d.ts's doc
+  // comment). It's typechecked separately via tsconfig.worklet.json instead;
+  // both together cover 100% of src/ with no overlap. See
+  // apps/desktop/CLAUDE.md for the full writeup.
+  "exclude": [
+    "node_modules",
+    "dist",
+    "out",
+    ".vite",
+    "src/audio/audioworklet-globals.d.ts",
+    "src/audio/pitch-worklet-processor.ts"
+  ]
+}

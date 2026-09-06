@@ -1,0 +1,41 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Deliberately NOT tsconfig.json's ["ES2022", "DOM", "DOM.Iterable"]:
+    // AudioWorkletGlobalScope has no DOM at all. This is what makes this
+    // second project genuinely useful rather than a formality -- it's the
+    // compiler enforcement of Hard Rule 3's worklet-scope constraint (see
+    // apps/desktop/CLAUDE.md's "DSP binding decision" section): a stray
+    // `document`/`window` reference accidentally introduced into
+    // pitch-worklet-processor.ts, or into anything it imports from
+    // `@violin/dsp-ts` (packages/dsp-ts/src/**, pulled into this same `tsc`
+    // program transitively via that import -- module resolution, not a
+    // separate project reference, so this program's own compilerOptions
+    // still apply to it), fails HERE, at compile time, instead of as a
+    // confusing runtime ReferenceError inside the audio thread.
+    "lib": ["ES2022"],
+    // Also exclude the auto-hoisted @types/node (this workspace's
+    // `nodeLinker: hoisted` setting means every @types/* package anyone
+    // depends on is visible to every tsconfig unless explicitly turned off)
+    // -- otherwise Node globals like `process`/`require` would leak into
+    // worklet-scope typechecking too, defeating half the point of this file.
+    "types": [],
+    "noEmit": true
+  },
+  // Only this app's own two worklet-scope files are listed as roots --
+  // `@violin/dsp-ts`'s source is NOT listed here (unlike the pre-Phase-4
+  // version of this file, which had to list `src/dsp/**/*.ts` explicitly
+  // since those files lived in this app). It doesn't need to be: `tsc`
+  // still pulls it into this compilation transitively because
+  // pitch-worklet-processor.ts imports it, and applies this same
+  // restricted lib/types to it once pulled in -- see that file's own
+  // comment.
+  "include": [
+    "src/audio/audioworklet-globals.d.ts",
+    "src/audio/worklet-messages.ts",
+    "src/audio/pitch-worklet-processor.ts"
+  ]
+}

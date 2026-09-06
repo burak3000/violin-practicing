@@ -1,0 +1,29 @@
+{
+  "name": "violin-practicing",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cross-platform (Electron desktop + Expo/React Native mobile) violin practice app: real-time pitch/intonation feedback for Finger Tuner and Playing Practice modes.",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "pnpm -r --if-present run test",
+    "build:dsp-native": "cmake -S packages/dsp-native -B packages/dsp-native/build && cmake --build packages/dsp-native/build",
+    "test:dsp-native": "ctest --test-dir packages/dsp-native/build --output-on-failure"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.69.0"
+  }
+}

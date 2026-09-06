@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Violin Practice — Finger Tuner</title>
+  </head>
+  <body>
+    <header class="app-header">
+      <h1 id="app-title">Finger Tuner</h1>
+      <button id="debug-toggle-btn" type="button" class="debug-toggle" aria-expanded="false">
+        Debug info
+      </button>
+    </header>
+
+    <!-- Mode switcher: both modes share the single capture pipeline/control
+         bar below (one mic session, either view of its live output) -- see
+         apps/desktop/CLAUDE.md's "Mode switcher" section. Finger Tuner is
+         the default active mode (unchanged from Phase 5) so nothing about
+         the existing tuner's default appearance/behavior changes for anyone
+         who never touches this new control. -->
+    <nav class="mode-tabs" aria-label="Practice mode">
+      <button id="mode-tab-tuner" type="button" class="mode-tab" aria-pressed="true">
+        Finger Tuner
+      </button>
+      <button id="mode-tab-practice" type="button" class="mode-tab" aria-pressed="false">
+        Playing Practice
+      </button>
+    </nav>
+
+    <section class="control-bar" aria-label="Input device and capture controls">
+      <div class="control-group">
+        <button id="request-devices-btn" type="button">Detect input devices</button>
+        <select id="device-select" disabled aria-label="Input device">
+          <option value="">(no devices listed yet)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <button id="start-btn" type="button" disabled>Start</button>
+        <button id="stop-btn" type="button" disabled>Stop</button>
+        <button id="self-test-btn" type="button">Self-test (440Hz tone)</button>
+      </div>
+    </section>
+    <div id="device-status" class="status-line"></div>
+    <div id="capture-status" class="status-line">idle</div>
+
+    <main class="tuner" id="tuner" data-tone="no-signal">
+      <!-- aria-live scoped to just this label, not the whole tuner: the
+           note/cents/meter below update every audio hop (~11.6ms) and would
+           spam a screen reader with constant announcements. This label only
+           changes text on an actual no-signal/unclear/reading transition. -->
+      <div class="tuner-state-label" id="tuner-state-label" aria-live="polite">No signal</div>
+
+      <div class="tuner-note-row">
+        <span class="tuner-note" id="tuner-note">—</span>
+        <span class="tuner-cents" id="tuner-cents"></span>
+      </div>
+
+      <div class="tuner-meter">
+        <div class="tuner-meter-track" id="tuner-meter-track">
+          <div class="tuner-meter-in-tune-zone"></div>
+          <div class="tuner-meter-center-tick"></div>
+          <div class="tuner-meter-needle" id="tuner-meter-needle"></div>
+        </div>
+        <div class="tuner-meter-scale">
+          <span>flat</span>
+          <span>in tune</span>
+          <span>sharp</span>
+        </div>
+      </div>
+
+      <div class="tuner-frequency" id="tuner-frequency" hidden></div>
+      <div class="tuner-clip-warning" id="tuner-clip-warning" hidden>
+        Clipping — reduce input gain
+      </div>
+    </main>
+
+    <!-- Playing Practice mode (Phase 6) + Drilling (Phase 7). Hidden by
+         default -- Finger Tuner is the default active mode (see the
+         mode-tabs nav above). See apps/desktop/CLAUDE.md's "Playing
+         Practice UI (Phase 6)" and "Drilling UI (Phase 7)" sections for the
+         full writeup. `#pp-target`'s elements (progress line, live
+         feedback, dwell bar, success/outcome banner) are now shared
+         verbatim by both Playing Practice and Drilling -- only their text
+         content and which of the two give-up-style buttons is visible
+         change based on `PracticeSessionController.state.mode`; see
+         playing-practice-ui.ts's `renderCurrentState()`. -->
+    <section class="playing-practice" id="playing-practice" hidden aria-label="Playing Practice">
+      <details class="pp-config" id="pp-config" open>
+        <summary>Sequence settings</summary>
+        <div class="pp-config-grid">
+          <fieldset class="pp-strings">
+            <legend>Strings</legend>
+            <label><input type="checkbox" id="pp-string-G" checked /> G</label>
+            <label><input type="checkbox" id="pp-string-D" checked /> D</label>
+            <label><input type="checkbox" id="pp-string-A" checked /> A</label>
+            <label><input type="checkbox" id="pp-string-E" checked /> E</label>
+          </fieldset>
+          <label class="pp-field">
+            Pattern
+            <select id="pp-pattern">
+              <option value="open-strings">Open strings only</option>
+              <option value="stepwise-first-position" selected>Stepwise (first position)</option>
+              <option value="one-octave-scale">One-octave scale</option>
+            </select>
+          </label>
+          <label class="pp-field">
+            Direction
+            <select id="pp-direction">
+              <option value="ascending" selected>Ascending</option>
+              <option value="descending">Descending</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <label class="pp-field">
+            Min frequency (Hz)
+            <input type="number" id="pp-min-freq" value="150" min="1" step="1" />
+          </label>
+          <label class="pp-field">
+            Max frequency (Hz)
+            <input type="number" id="pp-max-freq" value="1600" min="1" step="1" />
+          </label>
+        </div>
+        <div class="pp-preview" id="pp-preview" aria-live="polite"></div>
+        <div class="pp-config-error" id="pp-config-error" hidden></div>
+        <div class="pp-config-actions">
+          <button id="pp-start-btn" type="button">Start sequence</button>
+        </div>
+      </details>
+
+      <div class="pp-session" id="pp-session" hidden>
+        <div class="pp-progress" id="pp-progress"></div>
+
+        <div class="pp-target" id="pp-target">
+          <div class="pp-mode-label" id="pp-mode-label" aria-live="polite"></div>
+          <div class="pp-target-note" id="pp-target-note">—</div>
+          <div class="pp-live-feedback" id="pp-live-feedback"></div>
+          <div class="pp-dwell-track" id="pp-dwell-track">
+            <div class="pp-dwell-fill" id="pp-dwell-fill"></div>
+          </div>
+          <!-- Shared by Playing Practice's "Nice!" and Drilling's
+               "Mastered!"/"Moving on" (Phase 7) -- see
+               playing-practice-ui.ts's showDrillEndBanner(). The
+               .pp-banner-neutral modifier (toggled in JS, not present here)
+               recolors it for the "Moving on" case. -->
+          <div class="pp-success-banner" id="pp-success-banner" aria-live="polite" hidden>
+            Nice!
+          </div>
+          <!-- Exactly one of these two is ever visible at a time (toggled
+               in renderCurrentState()): giveup-btn gives up on just the
+               current attempt (Playing Practice, or a single Drilling rep);
+               skip-drill-btn (Phase 7) abandons the whole drill via
+               DrillingMachine.skip(). See playing-practice-ui.ts's doc
+               comment for why these are two distinct controls. -->
+          <button id="pp-giveup-btn" type="button" class="pp-giveup-btn">
+            Having trouble? Skip this note
+          </button>
+          <button id="pp-skip-drill-btn" type="button" class="pp-giveup-btn" hidden>
+            Skip this drill
+          </button>
+        </div>
+
+        <div class="pp-complete" id="pp-complete" hidden>
+          <p class="pp-complete-message">Sequence complete!</p>
+          <button id="pp-restart-btn" type="button">Start a new sequence</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="debug-panel" id="debug-panel" hidden>
+      <h2>Debug info</h2>
+      <p class="hint">
+        Not the tuner itself -- this is raw pipeline telemetry for troubleshooting. See
+        <code>apps/desktop/CLAUDE.md</code> for what each latency number does and doesn't prove.
+      </p>
+      <dl class="reading-grid">
+        <dt>Raw reading (unsmoothed, per-hop)</dt>
+        <dd id="debug-raw">—</dd>
+        <dt>Smoothed reading (what the tuner above shows)</dt>
+        <dd id="debug-smoothed">—</dd>
+        <dt>Onset state</dt>
+        <dd id="debug-onset-state">—</dd>
+        <dt>Clipping</dt>
+        <dd id="debug-clipping">no</dd>
+        <dt>Hop compute time (last / mean / p99)</dt>
+        <dd id="latency-compute">—</dd>
+        <dt>Worklet→main relay latency (last / mean / p99)</dt>
+        <dd id="latency-relay">—</dd>
+        <dt>Hop arrival interval (mean / stddev)</dt>
+        <dd id="latency-cadence">—</dd>
+        <dt>AudioContext base latency / sample rate</dt>
+        <dd id="latency-context">—</dd>
+        <dt>Frames analyzed</dt>
+        <dd id="latency-count">0</dd>
+      </dl>
+    </section>
+
+    <script type="module" src="/src/renderer.ts"></script>
+  </body>
+</html>

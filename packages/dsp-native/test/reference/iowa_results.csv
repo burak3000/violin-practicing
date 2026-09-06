@@ -1,0 +1,13 @@
+filename,algorithm,has_ground_truth_range,total_frames,raw_voiced_frames,raw_in_range_voiced,raw_octave_error_voiced,gated_voiced_frames,gated_in_range_voiced,gated_octave_error_voiced,onset_segments,mean_segment_duration_s,mean_segment_stddev_cents
+Violin.arco.ff.sulE.C7E7.mono.wav,YIN,1,1641,281,0,166,281,0,166,5,0.654803,8.00855
+Violin.arco.ff.sulE.C7E7.mono.wav,MPM,1,1641,267,0,163,260,0,157,5,0.682667,101.732
+Violin.arco.mf.sulA.A4B4.mono.wav,YIN,1,2298,1491,1486,0,1491,1486,0,4,3.79646,3.38114
+Violin.arco.mf.sulA.A4B4.mono.wav,MPM,1,2298,1497,1479,11,1485,1476,7,4,3.79937,3.44337
+Violin.arco.mf.sulD.D4B4.mono.wav,YIN,1,6118,2825,2825,0,2825,2825,0,14,2.28302,3.33073
+Violin.arco.mf.sulD.D4B4.mono.wav,MPM,1,6118,2438,2426,8,2434,2424,6,10,3.1138,60.8571
+Violin.arco.mf.sulE.E5B5.mono.wav,YIN,1,3976,2119,2117,1,2119,2117,1,13,1.84599,4.18144
+Violin.arco.mf.sulE.E5B5.mono.wav,MPM,1,3976,1404,1368,32,1401,1368,29,9,2.50647,228.732
+Violin.arco.mf.sulG.G3B3.mono.wav,YIN,1,2740,1322,1060,0,1322,1060,0,7,2.12463,71.6115
+Violin.arco.mf.sulG.G3B3.mono.wav,MPM,1,2740,1221,1141,1,1218,1141,1,5,2.94429,110.09
+Violin.arco.pp.sulG.G3B3.mono.wav,YIN,1,2943,1341,1045,0,1341,1045,0,8,1.9258,33.4296
+Violin.arco.pp.sulG.G3B3.mono.wav,MPM,1,2943,869,576,0,864,572,0,6,2.36844,42.1243

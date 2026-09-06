@@ -1,0 +1,19 @@
+{
+  "name": "@violin/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared, platform-agnostic domain logic for the violin practice app: note/cents math, procedural sequence generation, scoring, and session state machines. Consumed as TypeScript source directly by apps/desktop and apps/mobile. No audio/DSP code lives here — see packages/dsp-native.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.0"
+  }
+}

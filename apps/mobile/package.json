@@ -1,0 +1,33 @@
+{
+  "name": "@violin/mobile",
+  "version": "0.0.0",
+  "description": "Expo (React Native, New Architecture) mobile app for the violin practice project (Finger Tuner + Playing Practice). Phase 4: react-native-audio-api mic capture -> packages/dsp-ts's validated YIN pipeline -> packages/core. Phase 5: a real Finger Tuner UI (note/cents/meter, tri-state no-signal/unclear/reading, vibrato-aware smoothing via packages/core's TunerDisplaySmoother) replacing the old debug panel. Requires a custom dev client (Expo Go cannot load react-native-audio-api's native module) -- see CLAUDE.md.",
+  "main": "index.ts",
+  "dependencies": {
+    "@violin/core": "workspace:*",
+    "@violin/dsp-ts": "workspace:*",
+    "expo": "~57.0.20",
+    "expo-dev-client": "~57.0.18",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-audio-api": "^0.13.3",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.0"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "private": true
+}

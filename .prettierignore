@@ -1,0 +1,13 @@
+**/node_modules/**
+**/dist/**
+**/build/**
+**/out/**
+**/.vite/**
+**/.expo/**
+**/ios/**
+**/android/**
+**/coverage/**
+pnpm-lock.yaml
+temp/**
+.codegraph/**
+packages/dsp-native/build/**

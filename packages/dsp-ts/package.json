@@ -1,0 +1,20 @@
+{
+  "name": "@violin/dsp-ts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared, platform-agnostic TypeScript port of packages/dsp-native's validated YIN pitch-detection pipeline (YIN detector, harmonicity/HNR confidence gate, RMS silence/onset segmentation, input-gain clipping detection, hop-buffering). No DOM/Node/React-Native imports in its shipped source -- safe to run inside apps/desktop's AudioWorkletProcessor and apps/mobile's audio capture callback alike. Originally built inside apps/desktop during Phase 3; promoted to this shared package in Phase 4 so apps/mobile can reuse it instead of re-porting the algorithm a second time. See CLAUDE.md.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.0",
+    "@violin/core": "workspace:*",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.0"
+  }
+}

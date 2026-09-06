@@ -1,0 +1,46 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Electron Forge's own preflight check (electron-packager under the hood)
+# requires a hoisted, npm/yarn-style node_modules layout to figure out what
+# to copy into a packaged app — it doesn't understand pnpm's default
+# symlinked virtual store. `electron-forge package`/`make` fail outright
+# without this (documented pnpm+Electron-Forge requirement; the CLI's own
+# error message names this exact fix). This only changes how node_modules
+# is laid out on disk, not any application code or architecture.
+nodeLinker: hoisted
+
+# pnpm >=10 ignores dependency lifecycle scripts (postinstall, etc.) by
+# default for supply-chain safety, and pnpm 11 requires an explicit
+# decision per package name here instead of silently ignoring them.
+#   - electron: postinstall fetches the prebuilt Electron binary — required.
+#   - esbuild: postinstall fetches its native binary — required (Vite uses
+#     esbuild internally; without this it fails at runtime, not install time).
+#   - electron-winstaller (@electron-forge/maker-squirrel's dep): postinstall
+#     sets up Windows Squirrel-installer tooling. We only build/run on macOS
+#     in Phase 0 and never invoke the Squirrel maker, so this is declined
+#     rather than allowed. Revisit (set true) if a Windows build is ever
+#     produced from this machine.
+# If a future `pnpm install` reports another "Ignored build scripts"
+# package, add a decision for it here after checking what the script does
+# — don't blanket-allow everything.
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+allowBuilds:
+  esbuild: true
+  electron-winstaller: false
+
+# @electron-forge/cli's dependency chain (@electron/rebuild) pins
+# @electron/node-gyp to a raw git commit instead of a published npm
+# version. pnpm 11 blocks git-resolved *sub*dependencies by default
+# (blockExoticSubdeps) as a supply-chain safety measure, which breaks
+# `pnpm install` for apps/desktop. Rather than disabling that safety check
+# repo-wide, pin the transitive dep to the equivalent officially-published
+# npm package instead (same maintainers/purpose: Electron's node-gyp fork
+# used only when rebuilding native Node addons, which Phase 0 doesn't do
+# yet). Revisit if apps/desktop ever needs @electron/rebuild to actually
+# run (e.g. wiring packages/dsp-native in as a native Node addon, Phase 3).
+overrides:
+  '@electron/node-gyp': '10.2.0-electron.2'
