@@ -93,11 +93,16 @@ export class AudioCaptureController {
    * back.
    */
   private createWorkletNode(audioContext: AudioContext): AudioWorkletNode {
+    // 'max': hand the worklet every channel the source provides (a 4-channel
+    // interface arrives as 4 discrete arrays) instead of letting Web Audio
+    // downmix to mono first. Averaging a signal channel with silent
+    // loopback channels would only lose level; worse, a discrete downmix
+    // keeps channel 0 only, which is wrong for instruments on input 2+.
+    // Channel selection is the worklet's job -- see pitch-worklet-processor.ts.
     const workletNode = new AudioWorkletNode(audioContext, PITCH_PROCESSOR_NAME, {
       numberOfInputs: 1,
       numberOfOutputs: 1,
-      channelCount: 1,
-      channelCountMode: 'explicit',
+      channelCountMode: 'max',
     });
     const muteGain = audioContext.createGain();
     muteGain.gain.value = 0;
@@ -105,7 +110,10 @@ export class AudioCaptureController {
     this.muteGain = muteGain;
 
     workletNode.port.onmessage = (event: MessageEvent<WorkletAnalysisMessage>) => {
-      const now = performance.now();
+      // Same clock as the worklet's `workletTimestampMs` (Date.now() epoch
+      // ms -- see pitch-worklet-processor.ts for why not performance.now()),
+      // so the relay-latency subtraction below compares like with like.
+      const now = Date.now();
       const relayLatencyMs = now - event.data.workletTimestampMs;
       const hopArrivalIntervalMs =
         this.lastMessageAtMs === undefined ? undefined : now - this.lastMessageAtMs;
@@ -131,13 +139,22 @@ export class AudioCaptureController {
     const startToken = ++this.startToken;
     this.setState({ status: 'starting' });
     try {
+      // Deliberately NO `channelCount` constraint. Forcing `channelCount: 1`
+      // made Chromium configure its macOS CoreAudio input unit for a mono
+      // layout that multichannel interfaces can't serve -- observed on an
+      // Arturia MiniFuse 1 (4 input channels: 2 analog + 2 USB loopback) as
+      // an endless stream of kAudioUnitErr_CannotDoInCurrentContext errors
+      // in Chromium's own log and zero audio ever reaching the worklet.
+      // Opening the device at its native channel layout avoids that; the
+      // worklet then picks the channel that actually carries signal (see
+      // pitch-worklet-processor.ts), which is also the right behavior for
+      // any interface where the instrument lands on input 2, 3, ...
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: { exact: deviceId },
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
-          channelCount: 1,
         },
       });
       if (startToken !== this.startToken) {
@@ -215,10 +232,18 @@ export class AudioCaptureController {
   }
 
   /** Read-only diagnostics for the debug UI (task point 6). `undefined` fields mean "not applicable to the current graph" (e.g. no real input track when running the oscillator self-test). */
-  get diagnostics(): { baseLatencyS: number | undefined; sampleRateHz: number | undefined } {
+  get diagnostics(): {
+    baseLatencyS: number | undefined;
+    sampleRateHz: number | undefined;
+    inputTrack: MediaTrackSettings | undefined;
+  } {
     return {
       baseLatencyS: this.audioContext?.baseLatency,
       sampleRateHz: this.audioContext?.sampleRate,
+      // What Chromium *actually* opened (channel count, device sample rate,
+      // resolved deviceId) -- not what was requested. The two can differ
+      // silently, which is exactly what this exists to make visible.
+      inputTrack: this.mediaStream?.getAudioTracks()[0]?.getSettings(),
     };
   }
 

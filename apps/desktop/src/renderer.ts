@@ -106,8 +106,15 @@ const playingPracticeUi = new PlayingPracticeUi({
 
 const debugRaw = byId<HTMLElement>('debug-raw');
 const debugSmoothed = byId<HTMLElement>('debug-smoothed');
+const debugLevel = byId<HTMLElement>('debug-level');
+const debugTrack = byId<HTMLElement>('debug-track');
 const debugOnsetState = byId<HTMLElement>('debug-onset-state');
 const debugClipping = byId<HTMLElement>('debug-clipping');
+
+function fmtDbfs(value: number): string {
+  return Number.isFinite(value) ? `${value.toFixed(1)}` : '-∞';
+}
+let lastDiagLogMs = 0;
 
 const latencyCompute = byId<HTMLElement>('latency-compute');
 const latencyRelay = byId<HTMLElement>('latency-relay');
@@ -427,6 +434,21 @@ function handleAnalysis(
 
   debugRaw.textContent = formatForDebug(rawReading);
   debugSmoothed.textContent = formatForDebug(smoothedReading);
+  debugLevel.textContent = `${fmtDbfs(message.rmsDbfs)} / ${fmtDbfs(message.peakDbfs)}`;
+  const track = capture.diagnostics.inputTrack;
+  // Throttled console diagnostics -- readable from the Electron process's
+  // stdout when launched with ELECTRON_ENABLE_LOGGING=1, so the numbers can
+  // be inspected without screen access. Temporary troubleshooting aid.
+  const nowMs = performance.now();
+  if (!debugPanel.hidden && nowMs - lastDiagLogMs > 1000) {
+    lastDiagLogMs = nowMs;
+    console.log(
+      `[diag] frames=${framesAnalyzed} rms=${fmtDbfs(message.rmsDbfs)} peak=${fmtDbfs(message.peakDbfs)} voiced=${message.voiced} f=${message.frequencyHz.toFixed(1)} conf=${message.confidence.toFixed(2)} onset=${message.onsetState} inCh=${message.inputChannels} selCh=${message.selectedChannel} track=${JSON.stringify(track ?? null)} ctxRate=${capture.diagnostics.sampleRateHz}`,
+    );
+  }
+  debugTrack.textContent = track
+    ? `${track.channelCount ?? '?'}ch track, worklet sees ${message.inputChannels}ch, analyzing ch ${message.selectedChannel + 1} / ${track.sampleRate ?? '?'}Hz / ${(track.deviceId ?? '').slice(0, 12)}`
+    : `— (no live input track; worklet sees ${message.inputChannels}ch, analyzing ch ${message.selectedChannel + 1})`;
   debugOnsetState.textContent = message.onsetState;
   debugClipping.textContent = message.clipping ? 'YES — reduce input gain' : 'no';
 
@@ -445,6 +467,9 @@ startBtn.addEventListener('click', () => {
   const deviceId = deviceSelect.value;
   if (!deviceId) return;
   framesAnalyzed = 0;
+  console.log(
+    `[diag] start requested deviceId=${deviceId} label=${deviceSelect.selectedOptions[0]?.textContent ?? '?'}`,
+  );
   void capture.start(deviceId);
 });
 

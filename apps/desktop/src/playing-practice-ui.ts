@@ -233,7 +233,10 @@ export class PlayingPracticeUi {
     this.el.restartBtn.addEventListener('click', () => this.showConfigAgain());
     this.el.giveUpBtn.addEventListener('click', () => {
       if (!this.tracker) return;
-      this.applyResult(this.tracker.giveUp(), performance.now());
+      // Date.now(): must be the same clock as `workletTimestampMs` (see
+      // pitch-worklet-processor.ts), since applyResult() may schedule a
+      // pause that later hops' timestamps are compared against.
+      this.applyResult(this.tracker.giveUp(), Date.now());
     });
     this.el.skipDrillBtn.addEventListener('click', () => {
       // Bypasses PracticeAttemptTracker entirely (unlike giveUpBtn above) --

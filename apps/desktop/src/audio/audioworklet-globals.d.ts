@@ -21,9 +21,9 @@
  * `@types/*` packages (see that file's own comment), so these
  * declarations are the ONLY globals visible there. It is deliberately
  * EXCLUDED from the main `tsconfig.json` (which has "DOM"), because DOM's
- * own (incompatible) `performance`/`MessagePort` globals would otherwise
- * collide with these. Don't add this file to the main tsconfig's
- * `include` -- see apps/desktop/CLAUDE.md.
+ * own (incompatible) `MessagePort` global would otherwise collide with the
+ * one declared here. Don't add this file to the main tsconfig's `include`
+ * -- see apps/desktop/CLAUDE.md.
  */
 
 declare abstract class AudioWorkletProcessor {
@@ -48,8 +48,15 @@ declare const currentTime: number;
 /** AudioContext-clock sample count as of the start of the current render quantum. */
 declare const currentFrame: number;
 
-/** Real in Chromium/Electron's AudioWorkletGlobalScope; used here only for the worklet-local compute-time measurement in pitch-worklet-processor.ts. */
-declare const performance: { now(): number };
+// NOTE: `performance` is deliberately NOT declared here. An earlier version
+// of this file declared it as a real global, but AudioWorkletGlobalScope
+// does not provide `performance` at runtime (Chromium/Electron included) --
+// that false declaration let pitch-worklet-processor.ts call
+// performance.now() and throw "ReferenceError: performance is not defined"
+// the first time real audio ever reached it. Leaving it undeclared makes
+// the worklet-scope typecheck (tsconfig.worklet.json, no DOM lib) reject any
+// such use at compile time. Use Date.now() for wall-clock time in the
+// worklet, or `currentTime`/`currentFrame` for audio-clock time.
 
 /** Only the one method this codebase actually calls -- not a full DOM MessagePort. */
 interface MessagePort {
