@@ -14,23 +14,39 @@ nodeLinker: hoisted
 # pnpm >=10 ignores dependency lifecycle scripts (postinstall, etc.) by
 # default for supply-chain safety, and pnpm 11 requires an explicit
 # decision per package name here instead of silently ignoring them.
-#   - electron: postinstall fetches the prebuilt Electron binary — required.
+#   - electron: REQUIRED in `allowBuilds` below, even though it looks like it
+#     shouldn't be. Observed, not assumed: electron@44.2.0's registry
+#     manifest declares no lifecycle scripts at all (`npm view
+#     electron@44.2.0 scripts` is empty; the package just ships a root
+#     install.js that its index.js runs on demand the first time Electron
+#     is required -- so a clean install legitimately has no
+#     node_modules/electron/dist until Electron is first run). pnpm 11
+#     nonetheless reports "Ignored build scripts: electron@44.2.0" and
+#     fails the install with ERR_PNPM_IGNORED_BUILDS when there is no
+#     explicit true/false decision for it here. Why pnpm flags a package
+#     with no declared scripts is NOT understood -- do not remove the entry
+#     on the theory that "Electron 44 has no install scripts". That exact
+#     reasoning was tried when the CI pipeline was added, and it broke
+#     `pnpm install` (and would have broken CI).
 #   - esbuild: postinstall fetches its native binary — required (Vite uses
 #     esbuild internally; without this it fails at runtime, not install time).
-#   - electron-winstaller (@electron-forge/maker-squirrel's dep): postinstall
-#     sets up Windows Squirrel-installer tooling. We only build/run on macOS
-#     in Phase 0 and never invoke the Squirrel maker, so this is declined
-#     rather than allowed. Revisit (set true) if a Windows build is ever
-#     produced from this machine.
+#   - electron-winstaller (@electron-forge/maker-squirrel's dep): its install
+#     script copies the host-arch 7-Zip binary to vendor/7z.exe (a file copy
+#     inside its own package, nothing else). Required: the Windows release
+#     build (.github/workflows/release.yml) runs the Squirrel maker, which
+#     fails without vendor/7z.exe. Declined through Phase 8, when nothing
+#     built for Windows; enabled when the CI/release pipeline was added.
 # If a future `pnpm install` reports another "Ignored build scripts"
 # package, add a decision for it here after checking what the script does
 # — don't blanket-allow everything.
 onlyBuiltDependencies:
   - electron
+  - electron-winstaller
   - esbuild
 allowBuilds:
+  electron: true
   esbuild: true
-  electron-winstaller: false
+  electron-winstaller: true
 
 # @electron-forge/cli's dependency chain (@electron/rebuild) pins
 # @electron/node-gyp to a raw git commit instead of a published npm

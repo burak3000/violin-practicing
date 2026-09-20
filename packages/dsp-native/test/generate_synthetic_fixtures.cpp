@@ -24,6 +24,7 @@
 //
 // Usage: generate_synthetic_fixtures <output-dir>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>

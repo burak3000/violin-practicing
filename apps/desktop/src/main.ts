@@ -42,8 +42,12 @@ const createWindow = () => {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // DevTools only when running from source (`pnpm start`) -- an installed,
+  // packaged build must not pop DevTools open on every launch. Still
+  // reachable there via the View menu / Ctrl+Shift+I (Cmd+Opt+I on macOS).
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
 };
 
 // This method will be called when Electron has finished

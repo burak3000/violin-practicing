@@ -22,7 +22,18 @@ const config: ForgeConfig = {
     },
   },
   rebuildConfig: {},
-  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
+  makers: [
+    // `name` is the Squirrel/NuGet package id. It defaults to package.json's
+    // "name" -- `@violin/desktop` here, and NuGet ids can't contain `@` or
+    // `/` -- so it has to be set explicitly or the Windows build fails.
+    // `setupExe` is the installer's filename (the release workflow's
+    // install notes refer to it by this exact name).
+    new MakerSquirrel({ name: 'violin_practice', setupExe: 'ViolinPractice-Setup.exe' }),
+    // win32 too: a portable, no-install alternative to the Squirrel installer.
+    new MakerZIP({}, ['darwin', 'win32']),
+    new MakerRpm({}),
+    new MakerDeb({}),
+  ],
   plugins: [
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
