@@ -46,7 +46,7 @@ platform-integration phase — this is that phase, and per the plan's Hard
 Rule 3 the policy is decided and documented in that module rather than
 guessed independently per platform.
 
-**11 test files, 197 tests, all passing** (`pnpm --filter @violin/core test`).
+**13 test files, 301 tests, all passing** (`pnpm --filter @violin/core test`; 197 / 11 files through Phase 8, +104 for ABC notation practice -- see "ABC notation" below).
 
 Two correctness fixes made during Phase 2 verification, worth knowing about:
 
@@ -120,6 +120,16 @@ src/
                                     with PracticeSessionController +
                                     generatePlayingPracticeSequence (see that
                                     section).
+  abc/
+    abc-parser.ts                  parseAbc() -- ABC notation text -> per-tune,
+                                    per-voice MIDI pitch lists (key signatures,
+                                    accidentals, ties, voices; see "ABC notation").
+    abc-parser.test.ts             77 tests (hand-derived expectations).
+    abc-practice.ts                buildAbcPracticeSequence() -- a parsed tune ->
+                                    SequenceNote[] with range checking +
+                                    transposition; abcTuneLabel/abcPracticeSummary
+                                    shared UI text.
+    abc-practice.test.ts
   persistence/
     ports.ts                       SessionStore<T> / ProgressRepository
                                     interfaces (v1 persistence decision).
@@ -474,6 +484,82 @@ with the correct resume index, and confirming that changing the sequence
 config (strings included, pattern type) visibly changes what feeds the
 session.
 
+## ABC notation (`abc/`) -- sheet-music practice, added after Phase 8
+
+At the user's explicit request the app can also practice a piece of sheet
+music, not only the procedural scale patterns: the user imports an ABC
+notation file and practices its notes in order, "similar to scale or arpeggio
+training." This is a **second sequence source** feeding the unchanged session
+machinery -- `parseAbc` + `buildAbcPracticeSequence` produce the same
+`SequenceNote[]` that `generatePlayingPracticeSequence` does, so scoring, the
+give-up policy and the Drilling hand-off all apply to a tune exactly as to a
+scale. (`SequenceNote.sourceString` became optional for this: it only means
+something for generated notes, and nothing outside the generator read it.)
+
+**`parseAbc(text): { tunes, warnings }`** (never throws) resolves everything
+that decides _which pitch_ a written note is: note letter and case
+(`C` = C4, `c` = C5), octave marks, `^ ^^ _ __ =`, accidental scope, the `K:`
+key signature (all modes, `exp`/explicit accidentals, `HP`/`Hp`, `none`, in
+the header and mid-tune via a `K:` line or `[K:...]`), ties (merged into one
+note; an accidental carries through a tie), voices (`V:`, kept separate), and
+multi-tune files. It deliberately does **not** keep rhythm: lengths, broken
+rhythm and tuplets are consumed and discarded (nothing scores rhythm), rests
+are dropped, grace notes/decorations/chord symbols/lyrics are skipped, and
+repeats/voltas are recognized as bar lines but **not expanded** (notes play
+once, as written).
+
+Anything it cannot represent is reported in the tune's `warnings`, never
+silently mis-parsed: chords/double stops (top note used -- the app is
+monophonic), microtonal accidentals, `&` voice overlays (skipped), `m:` macros,
+ties between different pitches, unterminated chords, characters it doesn't
+understand, a missing/unknown key, a blank line splitting a tune (ABC ends a
+tune at a blank line, so later music is reported rather than dropped).
+
+**Judgment calls to know about:**
+
+- _Accidental scope is per octave_ (`^F f` -> F#4 then plain F5), as in printed
+  notation and in abcjs. The ABC 2.1 standard's own default
+  (`%%propagate-accidentals pitch`, in a section it marks volatile) would carry
+  the accidental to every octave. We follow the renderer most ABC sites use,
+  since that is the sheet the player is looking at.
+- _`K:D exp _b _e` means exactly those accidentals_ (the standard); abcjs
+  ignores `exp` as deprecated and adds them to D major.
+- Keys beyond seven sharps/flats read their letters through double accidentals
+  (G# major: F## G# A# ...); abcjs re-spells these enharmonically. Purely
+  theoretical keys; the standard behavior was chosen.
+
+**Validation beyond the unit tests.** The 77 parser tests use hand-derived
+expected pitches. Independently, the parser was cross-checked against `abcjs`
+(the reference ABC library, run from a scratch directory, not a dependency) by
+extracting sounding pitches from its generated MIDI: a hand-written corpus
+plus ~4,000 randomly generated tunes across 47 key spellings with accidentals,
+octave marks, rests, lengths and valid ties. Pitches were identical, except
+where behavior differs on purpose (the `exp` and beyond-seven-sharps items
+above), abcjs expands trills/rolls into extra notes, and ties between
+_different_ pitches (invalid ABC; abcjs silently drops one of the notes, we keep
+both and warn). On accidental scope abcjs agrees with this parser.
+
+**`buildAbcPracticeSequence(tune, options)`** returns `ok | empty |
+out-of-range`. A tune with any note below the violin's open G (G3) or above the
+detector ceiling (default 1600Hz, same as the generator) is **refused as a
+whole** with a count and, when a whole-octave shift would fit, a suggested
+`transposeSemitones` -- it never silently drops notes, because a melody with
+notes removed no longer matches the sheet. Many ABC files are written an octave
+off from where a violinist expects them, hence the transpose control in both UIs.
+
+**`PracticeAttemptTracker` option `requireReleaseFirst`** (new): a tune can ask
+for the same pitch twice in a row, and a player still holding the note they
+just got credit for would satisfy the next, identical target instantly. With
+the option on, in-tune readings count as silence until the first frame that is
+not an in-tune reading of the target (a gap, bow-change dropout, or another
+pitch); the timeout clock still runs. Both UIs set it only when the previous
+attempt _succeeded_ and the next target has the same pitch (never after a
+failure, so Drilling reopening on the missed note is unaffected, and generated
+scale sequences never trigger it). Whether a real bow change on a real violin
+reliably produces a detectable release is **not verified** -- if it doesn't, a
+repeated note will time out into Drilling, which the manual skip buttons can
+always escape.
+
 ## Persistence (`persistence/ports.ts`, `persistence/in-memory.ts`)
 
 Confirmed v1 decision (plan's "Confirmed architectural decisions" #2): **no
@@ -518,7 +604,7 @@ in-session features (e.g. a running streak) work correctly.
 
 From the repo root:
 
-- `pnpm --filter @violin/core test` — run the full Vitest suite once (`vitest run`). Currently **10 test files, 169 tests**, all passing.
+- `pnpm --filter @violin/core test` — run the full Vitest suite once (`vitest run`). Currently **13 test files, 301 tests**, all passing.
 - `pnpm --filter @violin/core test:watch` — Vitest watch mode.
 - `pnpm --filter @violin/core typecheck` — `tsc --noEmit`.
 - `pnpm test` / `pnpm typecheck` / `pnpm lint` from the repo root also cover this package (via `pnpm -r --if-present`) alongside every other workspace package.

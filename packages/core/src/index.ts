@@ -43,6 +43,12 @@ export type {
   SequencePatternType,
 } from './sequence/sequence-generator.js';
 
+// ABC notation (sheet-music practice): parser + conversion to a practice sequence
+export { MAX_ABC_TEXT_LENGTH, parseAbc } from './abc/abc-parser.js';
+export type { AbcParseResult, AbcTune, AbcVoice } from './abc/abc-parser.js';
+export { abcPracticeSummary, abcTuneLabel, buildAbcPracticeSequence } from './abc/abc-practice.js';
+export type { AbcPracticeOptions, AbcPracticeSequence } from './abc/abc-practice.js';
+
 // Scoring: tolerance bands, confidence gating, dwell time
 export {
   DEFAULT_IN_TUNE_CENTS_TOLERANCE,

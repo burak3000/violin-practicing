@@ -8,9 +8,15 @@ import {
 import type {
   PlayingPracticeConfigSnapshot,
   PlayingPracticePreview,
-  PlayingPracticeSessionViewState,
   PlayingPracticeViewState,
 } from './playing-practice-controller';
+import {
+  CaptureNotice,
+  CompleteBlock,
+  PillButton,
+  SegmentedControl,
+  SessionPanel,
+} from './PracticeParts';
 
 /**
  * Phase 6 Part B: the mobile Playing Practice screen, the RN analogue of
@@ -41,6 +47,11 @@ import type {
  * "Mastered!", "Moving on") via `session.banner`, with `tone: 'neutral'`
  * (the "Moving on" case) picking up the `successBannerNeutral` style
  * instead of the default green -- see that style's own comment.
+ *
+ * **ABC Notation update**: `SessionPanel`, `PillButton`, `SegmentedControl`
+ * and the complete screen moved to `./PracticeParts.tsx` (unchanged) so the
+ * ABC Notation screen (`./AbcPracticeScreen.tsx`) shares them rather than
+ * copying them.
  *
  * Purely presentational, mirroring `FingerTunerScreen.tsx`'s own
  * convention exactly: every piece of state (the config controls' current
@@ -92,14 +103,7 @@ export function PlayingPracticeScreen({
         <Text style={styles.title}>Playing Practice</Text>
       </View>
 
-      {captureNotice && (
-        <View style={styles.captureNotice}>
-          <Text style={styles.captureNoticeText}>{captureNotice.message}</Text>
-          {captureNotice.actionLabel && (
-            <PillButton label={captureNotice.actionLabel} onPress={onResumeCapture} primary />
-          )}
-        </View>
-      )}
+      {captureNotice && <CaptureNotice notice={captureNotice} onAction={onResumeCapture} />}
 
       {viewState.phase === 'config' ? (
         <ConfigPanel
@@ -114,10 +118,11 @@ export function PlayingPracticeScreen({
           onStart={onStart}
         />
       ) : viewState.session.kind === 'complete' ? (
-        <View style={styles.completeBlock}>
-          <Text style={styles.completeMessage}>Sequence complete!</Text>
-          <PillButton label="Start a new sequence" onPress={onRestart} primary />
-        </View>
+        <CompleteBlock
+          message="Sequence complete!"
+          buttonLabel="Start a new sequence"
+          onPress={onRestart}
+        />
       ) : (
         <SessionPanel session={viewState.session} onGiveUp={onGiveUp} onSkipDrill={onSkipDrill} />
       )}
@@ -219,64 +224,6 @@ function ConfigPanel({
   );
 }
 
-function SessionPanel({
-  session,
-  onGiveUp,
-  onSkipDrill,
-}: {
-  session: Extract<PlayingPracticeSessionViewState, { kind: 'active' }>;
-  onGiveUp: () => void;
-  onSkipDrill: () => void;
-}) {
-  const isDrilling = session.mode === 'drilling';
-  return (
-    <View style={styles.session}>
-      <Text style={styles.progress}>{session.progressText}</Text>
-
-      <View style={styles.target}>
-        {isDrilling && <Text style={styles.modeLabel}>Drilling</Text>}
-        <Text style={styles.targetNote}>{session.targetNoteLabel}</Text>
-
-        {/* Live feedback + dwell bar: reused verbatim by Drilling as of
-            Phase 7 (see this file's own doc comment) -- no longer gated on
-            `!isDrilling` or an `!== undefined` check, since
-            PlayingPracticeController now populates both fields identically
-            for either mode. */}
-        {session.liveFeedbackText.length > 0 && (
-          <Text style={styles.liveFeedback}>{session.liveFeedbackText}</Text>
-        )}
-
-        <View style={styles.dwellTrack}>
-          <View style={[styles.dwellFill, { width: `${session.dwellFraction * 100}%` }]} />
-        </View>
-
-        {session.banner !== undefined && (
-          <Text
-            style={[
-              styles.successBanner,
-              session.banner.tone === 'neutral' && styles.successBannerNeutral,
-            ]}
-          >
-            {session.banner.text}
-          </Text>
-        )}
-
-        {/* Exactly one of these two is ever rendered (session.
-            showGiveUpButton/showSkipDrillButton are mutually exclusive) --
-            Playing Practice's own per-attempt give-up vs. Drilling's
-            whole-drill skip (Phase 7). See PlayingPracticeController's doc
-            comment for why these are two distinct controls. */}
-        {session.showGiveUpButton && (
-          <PillButton label="Having trouble? Skip this note" onPress={onGiveUp} />
-        )}
-        {session.showSkipDrillButton && (
-          <PillButton label="Skip this drill" onPress={onSkipDrill} />
-        )}
-      </View>
-    </View>
-  );
-}
-
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
     <Pressable
@@ -286,74 +233,6 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
       accessibilityState={{ checked: active }}
     >
       <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function SegmentedControl<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: ReadonlyArray<{ value: T; label: string }>;
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <View style={styles.segmented}>
-      {options.map((option) => {
-        const active = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            onPress={() => onChange(option.value)}
-            style={[styles.segment, active && styles.segmentActive]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-          >
-            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-/**
- * Deliberately duplicated from FingerTunerScreen.tsx's own (unexported)
- * `PillButton`, rather than extracting a shared component -- this phase's
- * scope is "add the new mode... don't touch the existing Finger Tuner
- * screen/logic," and this repo's own established convention for
- * small/simple UI helpers is local duplication over cross-file coupling
- * (see playing-practice-controller.ts's `formatSignedCents` comment for the
- * same precedent, sourced from apps/desktop/src/playing-practice-ui.ts).
- */
-function PillButton({
-  label,
-  onPress,
-  disabled,
-  primary,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  primary?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={[
-        styles.pillButton,
-        primary && styles.pillButtonPrimary,
-        disabled && styles.pillButtonDisabled,
-      ]}
-    >
-      <Text style={[styles.pillButtonLabel, primary && styles.pillButtonLabelPrimary]}>
-        {label}
-      </Text>
     </Pressable>
   );
 }
@@ -380,17 +259,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#1a1a1a',
-  },
-  captureNotice: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 14,
-    gap: 8,
-  },
-  captureNoticeText: {
-    fontSize: 13,
-    color: '#555',
   },
 
   // --- Config panel --------------------------------------------------
@@ -435,31 +303,6 @@ const styles = StyleSheet.create({
   chipLabelActive: {
     color: '#1a4d8f',
   },
-  segmented: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  segment: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#ddd',
-    backgroundColor: '#f7f7f7',
-  },
-  segmentActive: {
-    backgroundColor: '#eaf3ff',
-    borderColor: '#8fbcf5',
-  },
-  segmentLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-  },
-  segmentLabelActive: {
-    color: '#1a4d8f',
-  },
   freqRow: {
     flexDirection: 'row',
     gap: 16,
@@ -490,102 +333,14 @@ const styles = StyleSheet.create({
   },
 
   // --- Session panel ----------------------------------------------------
-  session: {
-    gap: 4,
-  },
-  progress: {
-    textAlign: 'center',
-    fontSize: 12,
-    color: '#666',
-  },
-  target: {
-    alignItems: 'center',
-    paddingVertical: 14,
-    gap: 6,
-  },
-  modeLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: '#8a5b00',
-  },
-  targetNote: {
-    fontSize: 56,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    fontVariant: ['tabular-nums'],
-  },
-  liveFeedback: {
-    fontFamily: 'Menlo, monospace',
-    fontSize: 14,
-    color: '#666',
-    minHeight: 18,
-  },
-  dwellTrack: {
-    height: 6,
-    width: '70%',
-    maxWidth: 220,
-    marginTop: 8,
-    borderRadius: 999,
-    backgroundColor: '#e9e9e9',
-    overflow: 'hidden',
-  },
-  dwellFill: {
-    height: '100%',
-    backgroundColor: '#1a7f37',
-  },
-  successBanner: {
-    marginTop: 8,
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1a7f37',
-  },
   // Drilling's "Moving on" (max-attempts-reached) reuses successBanner
   // itself (see PlayingPracticeController's showDrillEndBanner()) but reads
   // as neutral, not a win -- capping isn't a failure to punish. Matches
   // this file's own existing active-chip/segment/mode-tab blue (#1a4d8f)
   // rather than inventing a new hue, mirroring
   // apps/desktop/src/index.css's identical `.pp-banner-neutral` choice.
-  successBannerNeutral: {
-    color: '#1a4d8f',
-  },
 
   // --- Complete screen ---------------------------------------------------
-  completeBlock: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    gap: 16,
-  },
-  completeMessage: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1a7f37',
-  },
 
   // --- Shared button --------------------------------------------------
-  pillButton: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#ccc',
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    alignSelf: 'center',
-    marginTop: 10,
-  },
-  pillButtonPrimary: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
-  },
-  pillButtonDisabled: {
-    opacity: 0.5,
-  },
-  pillButtonLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  pillButtonLabelPrimary: {
-    color: '#fff',
-  },
 });

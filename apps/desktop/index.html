@@ -25,6 +25,9 @@
       <button id="mode-tab-practice" type="button" class="mode-tab" aria-pressed="false">
         Playing Practice
       </button>
+      <button id="mode-tab-abc" type="button" class="mode-tab" aria-pressed="false">
+        ABC Notation
+      </button>
     </nav>
 
     <section class="control-bar" aria-label="Input device and capture controls">
@@ -162,6 +165,79 @@
         <div class="pp-complete" id="pp-complete" hidden>
           <p class="pp-complete-message">Sequence complete!</p>
           <button id="pp-restart-btn" type="button">Start a new sequence</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABC Notation practice mode: import an ABC file, pick a tune, practice
+         its notes in order. Same session chrome (progress, target note, live
+         feedback, dwell bar, banner, give-up/skip buttons, complete screen)
+         as Playing Practice above, with its own element ids -- both are
+         driven by the shared PracticeSessionView (practice-session-view.ts).
+         See abc-practice-ui.ts and apps/desktop/CLAUDE.md's "ABC Notation
+         practice" section. -->
+    <section class="abc-practice" id="abc-practice" hidden aria-label="ABC Notation practice">
+      <details class="pp-config" id="abc-config" open>
+        <summary>Sheet music (ABC file)</summary>
+        <div class="abc-import">
+          <button id="abc-import-btn" type="button">Import ABC file…</button>
+          <span class="abc-file-name" id="abc-file-name">No file chosen</span>
+          <input
+            type="file"
+            id="abc-file-input"
+            accept=".abc,.txt,text/plain,text/vnd.abc"
+            hidden
+          />
+        </div>
+        <div class="pp-config-grid">
+          <label class="pp-field" id="abc-tune-field" hidden>
+            Tune
+            <select id="abc-tune-select"></select>
+          </label>
+          <label class="pp-field">
+            Transpose
+            <select id="abc-transpose-select">
+              <option value="-24">2 octaves down</option>
+              <option value="-12">1 octave down</option>
+              <option value="0" selected>As written</option>
+              <option value="12">1 octave up</option>
+              <option value="24">2 octaves up</option>
+            </select>
+          </label>
+        </div>
+        <div class="abc-summary" id="abc-summary" aria-live="polite"></div>
+        <ul class="abc-warnings" id="abc-warnings"></ul>
+        <div class="pp-config-error" id="abc-error" hidden></div>
+        <div class="pp-config-actions">
+          <button id="abc-start-btn" type="button" disabled>Start practicing</button>
+        </div>
+      </details>
+
+      <div class="pp-session" id="abc-session" hidden>
+        <div class="pp-progress" id="abc-progress"></div>
+
+        <div class="pp-target" id="abc-target">
+          <div class="pp-mode-label" id="abc-mode-label" aria-live="polite"></div>
+          <div class="pp-target-note" id="abc-target-note">—</div>
+          <div class="pp-upcoming" id="abc-upcoming"></div>
+          <div class="pp-live-feedback" id="abc-live-feedback"></div>
+          <div class="pp-dwell-track">
+            <div class="pp-dwell-fill" id="abc-dwell-fill"></div>
+          </div>
+          <div class="pp-success-banner" id="abc-success-banner" aria-live="polite" hidden>
+            Nice!
+          </div>
+          <button id="abc-giveup-btn" type="button" class="pp-giveup-btn">
+            Having trouble? Skip this note
+          </button>
+          <button id="abc-skip-drill-btn" type="button" class="pp-giveup-btn" hidden>
+            Skip this drill
+          </button>
+        </div>
+
+        <div class="pp-complete" id="abc-complete" hidden>
+          <p class="pp-complete-message">Piece complete!</p>
+          <button id="abc-restart-btn" type="button">Practice another piece</button>
         </div>
       </div>
     </section>

@@ -2,10 +2,15 @@
  * Procedural note-sequence generator for Playing Practice.
  *
  * Confirmed decision (see temp/PLAN-violin-practice-app.md, "Confirmed
- * architectural decisions" #3): procedural, not song-based. The pool is
- * derived purely from open strings + first-position major-scale patterns
- * (see ../note/violin-strings.ts for sourcing), never from sheet music or a
- * song file.
+ * architectural decisions" #3): this generator is procedural, not
+ * song-based. The pool is derived purely from open strings + first-position
+ * major-scale patterns (see ../note/violin-strings.ts for sourcing), never
+ * from sheet music or a song file.
+ *
+ * Practicing from sheet music was added later, at the user's explicit
+ * request, as a *separate* sequence source -- see ../abc/ (an ABC-notation
+ * file parsed into the same `SequenceNote[]` shape). This module stays
+ * procedural; both sources feed the same session machinery.
  */
 
 import {
@@ -75,8 +80,12 @@ export interface SequenceNote {
   readonly note: NoteName;
   /** Frequency at the config's resolved a4Hz. Regenerate the sequence if a4Hz changes. */
   readonly frequencyHz: number;
-  /** Which open string's pattern this note was generated from. */
-  readonly sourceString: ViolinStringName;
+  /**
+   * Which open string's pattern this note was generated from. `undefined`
+   * for notes that don't come from this generator (e.g. an imported ABC
+   * tune, see ../abc/abc-practice.ts) -- nothing outside this module reads it.
+   */
+  readonly sourceString?: ViolinStringName;
 }
 
 function offsetsForPattern(patternType: SequencePatternType): readonly number[] {

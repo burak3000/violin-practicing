@@ -36,6 +36,7 @@ import {
 import { AudioCaptureController, type CaptureState } from './audio/capture-pipeline.js';
 import type { WorkletAnalysisMessage } from './audio/worklet-messages.js';
 import { PlayingPracticeUi } from './playing-practice-ui.js';
+import { AbcPracticeUi } from './abc-practice-ui.js';
 
 console.log(
   '[violin-practice/desktop] renderer booted (Phase 8: eager permission + audio warm-up)',
@@ -55,6 +56,7 @@ const debugPanel = byId<HTMLElement>('debug-panel');
 
 const modeTabTuner = byId<HTMLButtonElement>('mode-tab-tuner');
 const modeTabPractice = byId<HTMLButtonElement>('mode-tab-practice');
+const modeTabAbc = byId<HTMLButtonElement>('mode-tab-abc');
 
 const requestDevicesBtn = byId<HTMLButtonElement>('request-devices-btn');
 const deviceStatus = byId<HTMLDivElement>('device-status');
@@ -74,6 +76,7 @@ const tunerFrequency = byId<HTMLElement>('tuner-frequency');
 const tunerClipWarning = byId<HTMLElement>('tuner-clip-warning');
 
 const playingPracticeSection = byId<HTMLElement>('playing-practice');
+const abcPracticeSection = byId<HTMLElement>('abc-practice');
 
 const playingPracticeUi = new PlayingPracticeUi({
   configDetails: byId<HTMLDetailsElement>('pp-config'),
@@ -102,6 +105,35 @@ const playingPracticeUi = new PlayingPracticeUi({
   skipDrillBtn: byId<HTMLButtonElement>('pp-skip-drill-btn'),
   complete: byId<HTMLElement>('pp-complete'),
   restartBtn: byId<HTMLButtonElement>('pp-restart-btn'),
+});
+
+// ABC Notation practice: same session chrome as Playing Practice (its own
+// element ids), plus the file-import panel. See abc-practice-ui.ts.
+const abcPracticeUi = new AbcPracticeUi({
+  configDetails: byId<HTMLDetailsElement>('abc-config'),
+  importBtn: byId<HTMLButtonElement>('abc-import-btn'),
+  fileInput: byId<HTMLInputElement>('abc-file-input'),
+  fileName: byId<HTMLElement>('abc-file-name'),
+  tuneField: byId<HTMLElement>('abc-tune-field'),
+  tuneSelect: byId<HTMLSelectElement>('abc-tune-select'),
+  transposeSelect: byId<HTMLSelectElement>('abc-transpose-select'),
+  summary: byId<HTMLElement>('abc-summary'),
+  warnings: byId<HTMLUListElement>('abc-warnings'),
+  error: byId<HTMLElement>('abc-error'),
+  startBtn: byId<HTMLButtonElement>('abc-start-btn'),
+  session: byId<HTMLElement>('abc-session'),
+  progress: byId<HTMLElement>('abc-progress'),
+  targetRoot: byId<HTMLElement>('abc-target'),
+  modeLabel: byId<HTMLElement>('abc-mode-label'),
+  targetNote: byId<HTMLElement>('abc-target-note'),
+  upcoming: byId<HTMLElement>('abc-upcoming'),
+  liveFeedback: byId<HTMLElement>('abc-live-feedback'),
+  dwellFill: byId<HTMLElement>('abc-dwell-fill'),
+  successBanner: byId<HTMLElement>('abc-success-banner'),
+  giveUpBtn: byId<HTMLButtonElement>('abc-giveup-btn'),
+  skipDrillBtn: byId<HTMLButtonElement>('abc-skip-drill-btn'),
+  complete: byId<HTMLElement>('abc-complete'),
+  restartBtn: byId<HTMLButtonElement>('abc-restart-btn'),
 });
 
 const debugRaw = byId<HTMLElement>('debug-raw');
@@ -290,19 +322,27 @@ debugToggleBtn.addEventListener('click', () => {
 // window keeps running in the background the whole time regardless of
 // which tab is showing, unchanged from how it already behaved pre-Phase-6).
 
-type AppMode = 'tuner' | 'practice';
+type AppMode = 'tuner' | 'practice' | 'abc';
+
+const MODE_TITLES: Readonly<Record<AppMode, string>> = {
+  tuner: 'Finger Tuner',
+  practice: 'Playing Practice',
+  abc: 'ABC Notation',
+};
 
 function setMode(mode: AppMode): void {
-  const tunerActive = mode === 'tuner';
-  tunerRoot.hidden = !tunerActive;
-  playingPracticeSection.hidden = tunerActive;
-  modeTabTuner.setAttribute('aria-pressed', String(tunerActive));
-  modeTabPractice.setAttribute('aria-pressed', String(!tunerActive));
-  appTitle.textContent = tunerActive ? 'Finger Tuner' : 'Playing Practice';
+  tunerRoot.hidden = mode !== 'tuner';
+  playingPracticeSection.hidden = mode !== 'practice';
+  abcPracticeSection.hidden = mode !== 'abc';
+  modeTabTuner.setAttribute('aria-pressed', String(mode === 'tuner'));
+  modeTabPractice.setAttribute('aria-pressed', String(mode === 'practice'));
+  modeTabAbc.setAttribute('aria-pressed', String(mode === 'abc'));
+  appTitle.textContent = MODE_TITLES[mode];
 }
 
 modeTabTuner.addEventListener('click', () => setMode('tuner'));
 modeTabPractice.addEventListener('click', () => setMode('practice'));
+modeTabAbc.addEventListener('click', () => setMode('abc'));
 
 // --- Device enumeration --------------------------------------------------
 
@@ -431,6 +471,8 @@ function handleAnalysis(
   // no Playing Practice sequence has been started yet, and independent of
   // which mode tab is currently visible (see setMode()'s comment).
   playingPracticeUi.handleAnalysisFrame(reading, rawReading, message.workletTimestampMs);
+  // ABC Notation practice: the same hop, same reading, its own session.
+  abcPracticeUi.handleAnalysisFrame(reading, rawReading, message.workletTimestampMs);
 
   debugRaw.textContent = formatForDebug(rawReading);
   debugSmoothed.textContent = formatForDebug(smoothedReading);

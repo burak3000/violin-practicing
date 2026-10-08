@@ -22,6 +22,8 @@ Phase 0 left this as a placeholder window. Phase 3 (see the plan's Phase 3 secti
 
 **Phase 8 update:** this app's capture layer is now eager at boot rather than fully lazy on the first Start click. `src/renderer.ts` requests microphone permission and enumerates input devices during launch, while `src/audio/capture-pipeline.ts` exposes `prepare()` and now preloads a suspended `AudioContext` + worklet module for reuse by the first real session or self-test instead of paying that cost on demand. The same Phase 8 pass also explicitly re-assessed the existing `MediaStreamTrack` `ended` device-unplug path against the plan's app-level bar ("visible error state, no silent fallback, no stuck running UI") and kept it: for desktop's current scope, it already does the right thing without inventing a second, parallel unplug detector.
 
+**ABC Notation practice (added after Phase 8, at the user's request):** a third mode tab, "ABC Notation", imports an ABC sheet-music file and practices its notes in order through the same session machinery as Playing Practice. New files: `src/abc-practice-ui.ts` (the import/preview UI) and `src/practice-session-view.ts` (the session half of `PlayingPracticeUi`, **extracted unchanged** so both modes share it); `playing-practice-ui.ts` now only owns the sequence-config controls and delegates the session to the view. `index.html`/`index.css`/`renderer.ts` gained the tab, the `#abc-practice` section (its own `abc-*` element ids, reusing the `pp-*` classes) and the bindings. Parsing and the sequence conversion are `packages/core`'s `parseAbc`/`buildAbcPracticeSequence` (see `packages/core/CLAUDE.md`'s "ABC notation"). See "ABC Notation practice" below.
+
 **Explicitly not done here** (later phases, per the plan): no persistence wiring, no cross-platform conformance suite inside this package, and no richer reconnect workflow beyond the now-confirmed visible "Input device disconnected." error state (e.g. a dedicated reconnect button or auto-retry flow).
 
 **What's verified vs. what still needs the user** — see "Verification" near the end of this file. Short version: the DSP algorithm itself, the buffering/composition logic, and the wiring into `packages/core` are all verified programmatically (Vitest, against synthetic tones, comparable to Phase 1's own numbers) — as of Phase 4, from `packages/dsp-ts`'s own test suite rather than a local one, re-confirmed against this app after the move. The app builds, typechecks, and boots (both `pnpm start` and a full `pnpm package`) without errors — re-verified after the Phase 4 import-path change specifically because that's exactly the kind of thing the "Vite worklet-loading gotcha" below already proved can break silently. **Real microphone/line-in capture with a real signal has not been exercised** — that needs a human running the packaged app.
@@ -71,6 +73,17 @@ apps/desktop/
                                    dwell-bar/success-banner rendering. See
                                    "Playing Practice UI (Phase 6)" and
                                    "Drilling UI (Phase 7)" below.
+
+    practice-session-view.ts      ABC-era extraction: PracticeSessionView -- the
+                                   session half of the old PlayingPracticeUi
+                                   (PracticeSessionController, one
+                                   PracticeAttemptTracker per target, live
+                                   feedback, dwell bar, banners, give-up/skip,
+                                   complete screen), unchanged in behavior, now
+                                   shared by Playing Practice and ABC practice.
+    abc-practice-ui.ts            AbcPracticeUi -- file import, tune/transpose
+                                   pickers, preview + warnings, Start; hands the
+                                   ABC-derived sequence to a PracticeSessionView.
 
     (no local dsp/ directory anymore -- see "Phase 4 update" above. The
      pure, dependency-free TypeScript port of packages/dsp-native's
@@ -351,6 +364,37 @@ Drilling reuses `#pp-target` — the exact same section Playing Practice renders
 - Every DOM id `renderer.ts`/`playing-practice-ui.ts` look up via `byId()` was cross-checked mechanically against `index.html`'s actual ids (no mismatches, including the new `#pp-skip-drill-btn`) — `byId()` throws immediately on a missing id, so this rules out the single most likely class of bug from adding a new element binding. `#pp-dwell-track` (the dwell bar's container `<div>`) is now the one id present in HTML but never looked up in JS — expected and intentional: it's permanently visible whenever `#pp-target` is (both modes use it as of this phase), so it no longer needs a JS handle to toggle its `hidden` state (previously toggled per-mode in Phase 6).
 - `pnpm --filter @violin/desktop run start` was run and its process tree inspected directly: main Electron process + 2 renderer helpers + GPU helper + network-service utility — the same healthy shape every prior phase documented — stable for the full observation window with nothing alarming in stdout/stderr (only the same pre-existing Vite/electron-forge config-loader warnings every prior phase has already seen and documented as harmless).
 - **Not verified: the actual rendered appearance, or a real drilling session played through end to end** (mastery, the attempt cap, and manual skip all reached with a real signal). Same limitation as every UI phase before this one — no visual/screenshot tooling for a real Electron window in the environment that built this. Whether the progress text/banners/buttons actually look and feel right, and whether the reused live-feedback/dwell-bar rendering genuinely reads as a natural extension of Playing Practice rather than a bolted-on afterthought, both still need a human to look at and play through the running app — see "To actually validate this phase end-to-end" below.
+
+## ABC Notation practice (added after Phase 8)
+
+The user asked for sheet-music practice: a button for ABC notation, import a file, then practice the piece "similar to scale or arpeggio training." This is the desktop half (see `apps/mobile/CLAUDE.md` for mobile, `packages/core/CLAUDE.md`'s "ABC notation" for the parser/sequence logic both share).
+
+### What it looks like
+
+A third mode tab, **ABC Notation**, next to Finger Tuner and Playing Practice (shared capture pipeline, same background-scoring behavior). Its section (`#abc-practice`):
+
+1. **Sheet music panel** (`<details>`, open until Start, reopenable mid-session like Playing Practice's config): an **Import ABC file…** button (a hidden `<input type="file">` read with `File.text()` -- a plain renderer-side Web API in Electron, so no IPC/preload bridge; nothing is persisted), the chosen file name, a **Tune** `<select>` (only shown for a file with more than one tune; the first tune that has notes is preselected), a **Transpose** `<select>` (2 octaves down ... 2 up, default as written), a preview (`Title · key K`, note count and range, first notes), the parser's warnings (amber list), and an error line. **Start practicing** is enabled only when the selection can actually be practiced.
+2. **Session view**: the same chrome as Playing Practice (progress, large target note, live "Hearing X (+Nc from target)" line, dwell bar, "Nice!"/"Mastered!"/"Moving on" banner, give-up/skip-drill buttons, complete screen reading "Piece complete!" / "Practice another piece") plus one new line, **"Next: B4 C5 D5 E5"** under the target note (previews the following notes; blank while drilling, since drilling rotates through neighbors rather than walking the piece).
+
+A missed note drills that note and its array-neighbors **in the tune** exactly as it does in a scale (`PracticeSessionController` is unchanged).
+
+### Range handling
+
+A tune with any note outside what a violin can play and the app can detect (below G3, above the 1600Hz ceiling) is **refused as a whole** with a count and, when one exists, a suggested octave shift ("Try transposing up an octave."); the user then picks it in the Transpose control. It never silently drops notes. There is no auto-transpose: the note names on screen should match the sheet unless the user chooses otherwise.
+
+### The extraction (what changed in existing code)
+
+`PlayingPracticeUi` used to own both the config controls and the whole session. The session logic moved, line for line, into `PracticeSessionView` (`begin(notes)`/`end()`/`handleAnalysisFrame`), which `PlayingPracticeUi` and `AbcPracticeUi` each construct with their own element ids. Playing Practice's observable behavior is unchanged, with one exception that never triggers for generated sequences: **repeated pitches**.
+
+### Repeated pitches
+
+Tunes repeat notes ("C C G G"); scales never do. A player still holding the note they just got credit for would satisfy the next, identical target the instant it appeared. When an attempt _succeeds_ and the next target has the same pitch, `PracticeSessionView` builds that tracker with `PracticeAttemptTracker`'s `requireReleaseFirst`: the player must leave the pitch (gap, bow change, another note) before the dwell clock starts. It is **not** applied after a failed attempt (Drilling reopens on the missed note and nothing was credited that a held note could leak into). A first version applied it after any attempt and broke an existing mobile test (Drilling reopening on a just-given-up note demanded a release) -- the success-only rule is the corrected design.
+
+### Verification specific to this feature
+
+- `pnpm --filter @violin/desktop typecheck` (main + worklet projects) clean; `pnpm lint`/`format:check` clean.
+- **Driven in a real browser DOM** (Vite serving the renderer; a temporary harness page, since deleted, mounted the real `#abc-practice` markup and fed `AbcPracticeUi` synthetic pitch frames at the real ~11.6ms hop cadence): file import through the real `<input type="file">`; tune picker; the too-low tune refused with the octave suggestion and accepted after transposing; a full three-note run (target changes, "Next:" preview, banners, complete screen, restart back to the import panel); a repeated A held straight through the next target did not advance until released; a wrong pitch for >10s timed out into Drilling, drilling to "Mastered!" resumed on the next note.
+- **Not verified:** the packaged Electron app's ABC tab (the in-app browser was used because it can run the renderer; the self-test tone could not start there, as `AudioContext.resume()` never resolved in that pane, which is unrelated to this feature); and **real violin input** -- in particular whether a real bow change on a repeated note produces a detectable release (if not, a repeated note times out into Drilling; the manual skip buttons always escape). A human with the instrument needs to play a tune with repeated notes through it.
 
 ## DSP binding decision: TypeScript port, not WASM or a Node addon
 

@@ -21,6 +21,8 @@ Phase 0 left this as a placeholder screen with no audio, no permissions, no nati
 
 **Phase 8 update:** the mobile app now has real app-layer interruption/background/device-unplug handling, plus the eager boot wiring the plan explicitly called for. `App.tsx` no longer waits for the first manual permission/start flow to touch audio setup: it configures the recording session immediately, requests microphone permission on first boot when it is still `Undetermined`, eagerly prepares `MicCaptureController`'s native listeners, and watches React Native `AppState` so `inactive`/`background` transitions pause capture instead of leaving the UI pretending it is still listening. `src/audio/mic-capture-controller.ts` now uses `AudioManager.observeAudioInterruptions(true)` with real `interruption` + `routeChange` listeners: interruption-began pauses cleanly, interruption-ended auto-resumes only when `shouldResume` and the app is still foregrounded, otherwise surfaces a clear "tap Resume" paused state, and `OldDeviceUnavailable` / `NoSuitableRouteForCategory` now become explicit disconnect errors rather than waiting for a generic recorder failure. `PlayingPracticeScreen.tsx` also gained a small capture-status notice so that paused/disconnected recovery is visible even when the user is on the Playing Practice tab instead of Finger Tuner. A new pure helper, `src/audio/capture-interruption-policy.ts`, carries the copy/decision logic and adds **4 tests**, bringing this app to **60 tests total**.
 
+**ABC Notation practice (added after Phase 8, at the user's request):** a third mode tab, "ABC Notation", imports an ABC sheet-music file and practices its notes in order through the same session machinery as Playing Practice -- the mobile counterpart of `apps/desktop`'s ABC mode (see its "ABC Notation practice" section for the product description; `packages/core/CLAUDE.md`'s "ABC notation" for the shared parser/sequence logic). New files under `src/practice/`: `abc-practice-controller.ts` (headless, RN-import-free, **24 tests**), `AbcPracticeScreen.tsx`, `abc-file-picker.ts` (the one native-module touchpoint), `practice-session-runner.ts` (the session half of `PlayingPracticeController`, **extracted unchanged** so both modes share it -- the existing 29 controller tests passed untouched through the extraction) and `PracticeParts.tsx` (the session panel, complete block, capture notice, `PillButton`, `SegmentedControl`, extracted from `PlayingPracticeScreen.tsx`). `App.tsx` gained the tab, a third always-mounted `<ScrollView>`, the controller, and one more `handleAnalysisFrame` call per hop; its inline paused/disconnected notice became a shared `captureNotice` value used by both practice tabs. **84 tests** total in this app now (60 + 24). See "ABC Notation practice" below.
+
 **What's verified vs. what needs a real device** — see "Verification" below. Short version: everything checkable **without a simulator or device** was checked and is clean (typecheck/lint/format/tests repo-wide — now including this app's own pure-logic test suites, **60 tests total** — `expo export --platform all --clear`, `expo prebuild` including a full `pod install`). Phase 5 Part B, Phase 6 Part B, Phase 7 Part B, and Phase 8 all still lack the manual simulator/real-device interruption and unplug exercises the plan explicitly requires, so none of those OS-event paths are claimed as _validated_ yet — only code-complete and headlessly verified. The orchestrator already ran simulator passes after Phase 4 and after Phase 5 Part B (see "What remains" below for exactly what those passes did and didn't confirm, including a documented touch-input reliability issue on some screens that recurred across sessions even after a full simulator reboot). **What's still genuinely unexercised by anything, old UI or new**: real capture with real audio, real note/cents accuracy, actually granting the permission dialog (simulated touch couldn't reach "Allow"), and now the new Phase 8 interruption/background/unplug flows themselves. See "What remains" at the end of this file for the precise next-steps split.
 
 ## Config plugin options (`app.json`)
@@ -282,6 +284,34 @@ Two other pre-existing tests (`succeeding on the last note of a sequence`, `mult
 - `npx expo export --platform all --clear` — bundles cleanly for both platforms (1127 iOS / 1134 Android modules; a small, expected fluctuation from Phase 6 Part B's own counts given cache-clearing variance already documented in that phase's own Commands entry — no new source files were added this phase, only existing ones extended).
 - **Not verified: the actual rendered appearance, or a real drilling session played through end to end** (mastery, the attempt cap, and manual skip all reached with a real signal). Same limitation as every UI phase before this one — no simulator/device access in the environment that built this. See "What remains" below.
 
+## ABC Notation practice (added after Phase 8)
+
+### What it looks like
+
+The third tab, **ABC Notation** (tabs are `flex: 1`, so three fit a phone width):
+
+1. **Import screen**: a one-line explanation, a primary **Import ABC file…** button (shows "Opening…" while the system picker is up; a second tap is ignored), the chosen file name, a **Tune** list (only for files with more than one tune: a bounded, scrollable list of `"<X>: <title>"` rows, first tune with notes preselected), a **Transpose** segmented control (−2 oct, −1 oct, As written, +1 oct, +2 oct), the preview (`Title · key K`, note count + range, first notes), the parser's warnings (amber bullets), an error line, and **Start practicing** (disabled unless the selection can be practiced).
+2. **Session view** and **complete screen**: the same components as Playing Practice (via `PracticeParts.tsx`), plus a **"Next: B4 C5 D5 E5"** line under the target note (blank while drilling). Complete reads "Piece complete!" / "Practice another piece"; restart keeps the imported file, tune and transposition.
+
+Range handling, the Drilling hand-off on a missed note, and the repeated-pitch rule are identical to desktop -- see that file's "ABC Notation practice" section rather than a second copy here.
+
+### File picking: `expo-file-system`, not a separate picker module
+
+SDK 57's `expo-file-system` has its own picker (`File.pickFileAsync()`, result `{ canceled, result: File }`) and `File.text()`, so `abc-file-picker.ts` uses only that -- no `expo-document-picker`. (It was added first, then removed once this was found.) `expo-file-system` was already in the tree as a transitive dependency of `expo`; this feature declares it directly (`~57.0.7`, the SDK 57 bundled version) because the app now imports it. The picker is **not filtered by MIME type**: `.abc` has no registered type on iOS and Android providers label it inconsistently (`text/plain`, `text/vnd.abc`, `application/octet-stream`), so a filter would hide the very files being looked for; `parseAbc` decides whether a file really is ABC and says so clearly if not. Files over 4MB are refused before being read.
+
+The picker is **injected** into `AbcPracticeController` (`new AbcPracticeController(pickAbcFile, ...)`) so the controller stays free of native imports and is unit-tested with fake pickers (success, cancel, error, loading/re-entrancy).
+
+### The extraction (what changed in existing code)
+
+`PlayingPracticeController` used to own config and session. The session half moved, essentially verbatim, into `PracticeSessionRunner` (`begin`/`end`/`giveUp`/`skipDrill`/`handleAnalysisFrame`/`getView`); the controller keeps config and previews and re-exports the session view-state types so existing imports (`PlayingPracticeScreen.tsx`, `App.tsx`, tests) did not change. The one view-state addition is an optional `upcomingText` (present only for runners created with `showUpcoming`, i.e. ABC), kept optional so Playing Practice's exact-equality test assertions stand unchanged. **`giveUp()` still uses `performance.now()`** (see the Phase 7 Part B section) -- that fix moved with the code.
+
+### Verification specific to this feature
+
+- `pnpm --filter @violin/mobile test` -- **84/84** (the 60 existing, including all 29 `PlayingPracticeController` tests, passed through the extraction unchanged; 24 new for the ABC controller). A mutation check confirmed the repeated-pitch test fails if the release requirement is disabled.
+- Whole-repo `typecheck`/`lint`/`format:check`/`test` clean; `npx expo export --platform all --clear` bundles both platforms (1046 iOS / 1160 Android modules).
+- **Rendered, not just compiled**: there is no Xcode on the machine that built this, so no simulator. Instead the real `AbcPracticeScreen`/`PlayingPracticeScreen` components were rendered through `react-native-web` in a throwaway Vite app (outside the repo, deleted) fed view states from the real controllers: empty import, tune book with a chord warning, an out-of-range tune, session, live feedback, "Nice!" banner, drilling, complete, the paused-capture notice, and Playing Practice's config and session screens (a regression check on the extraction). Layout looked right; one cosmetic issue (the transpose control wrapping to two lines at 390px) was found and fixed by shortening its labels. This is a web approximation of React Native layout, not a substitute for the simulator.
+- **Not verified:** the system picker on iOS or Android (including Android `content://` URIs and `File.text()` on them); whether an existing dev client already contains the `expo-file-system` native picker or needs a rebuild (`expo-file-system` was previously only a transitive dependency, so the native module is very likely already linked, but `File.pickFileAsync` availability in a client built before this change is unchecked -- rebuild the dev client if the button errors); the new tab's look and feel on a device; and real violin input (see desktop's note on repeated notes and bow changes).
+
 ## Architecture
 
 ```
@@ -410,6 +440,21 @@ apps/mobile/
                                     PlayingPracticeController and passed in as props. Not
                                     unit-tested, per this app's own established scope for
                                     RN component rendering -- see "Test coverage" above.
+      abc-practice-controller.ts       ABC Notation practice: AbcPracticeController (headless,
+                                    zero RN imports) -- import via an injected picker, parse
+                                    with core's parseAbc, tune/transpose selection, preview +
+                                    warnings, then a PracticeSessionRunner session. Also
+                                    exports ABC_TRANSPOSE_CHOICES and
+                                    INITIAL_ABC_PRACTICE_VIEW_STATE.
+      abc-practice-controller.test.ts  24 tests.
+      abc-file-picker.ts                pickAbcFile -- the real AbcFilePicker
+                                    (expo-file-system File.pickFileAsync + File.text()).
+      practice-session-runner.ts        PracticeSessionRunner -- the session half of the old
+                                    PlayingPracticeController (see "ABC Notation practice").
+      PracticeParts.tsx                 Shared presentational pieces: SessionPanel,
+                                    CompleteBlock, CaptureNotice, PillButton,
+                                    SegmentedControl.
+      AbcPracticeScreen.tsx             The ABC Notation screen (import panel + session).
   assets/                         App icons/splash images (template defaults, unchanged).
 ```
 

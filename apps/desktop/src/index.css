@@ -479,3 +479,49 @@ button:disabled {
   font-weight: 700;
   color: #1a7f37;
 }
+
+/* --- ABC Notation practice ------------------------------------------------
+   The session chrome reuses the .pp-* classes above verbatim (both modes are
+   driven by practice-session-view.ts); only the import panel and the
+   "Next:" preview line are new. */
+
+.abc-import {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding-block: 0.5rem;
+}
+
+.abc-file-name {
+  font-size: 0.85rem;
+  color: #666;
+  overflow-wrap: anywhere;
+}
+
+.abc-summary {
+  white-space: pre-line;
+  font-size: 0.8rem;
+  color: #666;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  margin-block-start: 0.5rem;
+}
+
+.abc-warnings {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1.1rem;
+  font-size: 0.8rem;
+  color: #8a5b00;
+}
+
+.abc-warnings:empty {
+  display: none;
+}
+
+.pp-upcoming {
+  min-height: 1.3em;
+  margin-block-start: 0.4rem;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: #999;
+}
