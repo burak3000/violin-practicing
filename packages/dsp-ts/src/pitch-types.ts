@@ -32,7 +32,7 @@ export interface PitchDetectorConfig {
 }
 
 export const VIOLIN_MIN_FREQUENCY_HZ = 150;
-export const VIOLIN_MAX_FREQUENCY_HZ = 1600;
+export const VIOLIN_MAX_FREQUENCY_HZ = 3000;
 export const DEFAULT_YIN_THRESHOLD = 0.15;
 
 /** Mirrors `PitchDetectorConfig::ForViolin(sampleRateHz)` -- the validated violin-range defaults, parameterized only by sample rate. */

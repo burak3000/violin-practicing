@@ -30,6 +30,16 @@ import {
   type PlayingPracticeViewState,
 } from './src/practice/playing-practice-controller';
 import { PlayingPracticeScreen } from './src/practice/PlayingPracticeScreen';
+import {
+  AbcPracticeController,
+  INITIAL_ABC_PRACTICE_VIEW_STATE,
+  type AbcCountInBars,
+  type AbcPracticeStyle,
+  type AbcPracticeViewState,
+} from './src/practice/abc-practice-controller';
+import { pickAbcFile } from './src/practice/abc-file-picker';
+import { AbcPracticeScreen } from './src/practice/AbcPracticeScreen';
+import type { NoteDisplay } from './src/practice/PracticeParts';
 
 /**
  * Phase 5 Part B: the real mobile Finger Tuner, replacing the Phase 4
@@ -78,6 +88,23 @@ import { PlayingPracticeScreen } from './src/practice/PlayingPracticeScreen';
  * interruption observers immediately, and listens to React Native's
  * `AppState` so backgrounding/inactivation pauses capture instead of
  * leaving the UI pretending it is still listening.
+ *
+ * **ABC Notation update**: a third tab, ABC Notation, sits beside the other
+ * two (see `src/practice/abc-practice-controller.ts` and
+ * `AbcPracticeScreen.tsx`): import an ABC file, pick a tune, practice its
+ * notes in order through the same session machinery as Playing Practice. Like
+ * Playing Practice, its controller is fed every analysis hop regardless of
+ * which tab is visible, and its screen stays permanently mounted so switching
+ * tabs never loses its place. Nothing else in this file changed.
+ *
+ * **ABC tempo/play-along update**: ABC practice gained a "Play along" style (a
+ * timed run with a visual metronome; "Wait for me" is the original untimed
+ * flow). Two things matter here. The play-along is NOT driven through React
+ * state per frame: `handleAnalysisFrame` below feeds the run and returns, and
+ * the ABC screen polls `getAbcPlayAlongView` at ~30 fps while a run is live
+ * (see `PlayAlongPanel.tsx`); and the hop's `timestampMs` (a
+ * `performance.now()` reading) is the clock the run is timed by, so it must
+ * stay on that clock. The rest is plumbing for the new settings/results actions.
  */
 export default function App() {
   // Boot-time eager setup (Phase 8): configuring the recording session is
@@ -144,7 +171,16 @@ export default function App() {
 
   // --- Mode switcher + Playing Practice (Phase 6 Part B) -------------------
 
-  const [mode, setMode] = useState<'tuner' | 'practice'>('tuner');
+  const [mode, setMode] = useState<'tuner' | 'practice' | 'abc'>('tuner');
+
+  // Letters vs. staff for the target note: one preference for both practice
+  // screens. Not persisted (v1 has no persistence by decision), so it resets
+  // to "Letters" on each launch.
+  const [noteDisplay, setNoteDisplay] = useState<NoteDisplay>('letters');
+  // Drilling on/off, likewise one preference for both practice screens (not persisted; on by default).
+  const [drilling, setDrilling] = useState(true);
+  // Finger numbers on ABC pieces: live-switchable, on by default, not persisted.
+  const [fingers, setFingers] = useState(true);
 
   // PlayingPracticeController is this app's headless analogue of
   // apps/desktop's `PlayingPracticeUi` (see that file/class's own doc
@@ -165,6 +201,20 @@ export default function App() {
   const ppControllerRef = useRef<PlayingPracticeController | undefined>(undefined);
   if (!ppControllerRef.current) {
     ppControllerRef.current = new PlayingPracticeController({ onChange: setPpViewState });
+  }
+
+  // ABC Notation practice: same construct-once-in-a-ref pattern as the
+  // Playing Practice controller above. `pickAbcFile` is the one piece that
+  // touches a native module (the system file picker), injected so the
+  // controller itself stays RN-import-free and unit-testable.
+  const [abcViewState, setAbcViewState] = useState<AbcPracticeViewState>(
+    INITIAL_ABC_PRACTICE_VIEW_STATE,
+  );
+  const abcControllerRef = useRef<AbcPracticeController | undefined>(undefined);
+  if (!abcControllerRef.current) {
+    abcControllerRef.current = new AbcPracticeController(pickAbcFile, {
+      onChange: setAbcViewState,
+    });
   }
 
   const controllerRef = useRef<MicCaptureController | undefined>(undefined);
@@ -225,6 +275,8 @@ export default function App() {
         // comment) -- mirrors apps/desktop/src/renderer.ts's identical
         // `playingPracticeUi.handleAnalysisFrame(...)` call exactly.
         ppControllerRef.current?.handleAnalysisFrame(pitchReading, raw, timestampMs);
+        // ABC Notation practice: the same hop, its own session.
+        abcControllerRef.current?.handleAnalysisFrame(pitchReading, raw, timestampMs);
       },
     });
   }
@@ -261,6 +313,11 @@ export default function App() {
       controllerRef.current?.setAppActive(isActive);
 
       if (!isActive) {
+        // A timed play-along cannot be paused (its clock keeps going while the
+        // app is away and capture is paused), so leaving the app ends it: the
+        // player comes back to the results of what was played, not to a run
+        // that carried on without them. A no-op for any other state.
+        abcControllerRef.current?.stopPlayAlong();
         void controllerRef.current?.pauseForBackground();
         return;
       }
@@ -323,6 +380,77 @@ export default function App() {
     ppControllerRef.current?.restart();
   }, []);
 
+  const onImportAbc = useCallback(() => {
+    void abcControllerRef.current?.importFile();
+  }, []);
+  const onSelectAbcTune = useCallback((index: number) => {
+    abcControllerRef.current?.selectTune(index);
+  }, []);
+  const onSetAbcTranspose = useCallback((semitones: number) => {
+    abcControllerRef.current?.setTranspose(semitones);
+  }, []);
+  const onSetAbcStyle = useCallback((style: AbcPracticeStyle) => {
+    abcControllerRef.current?.setStyle(style);
+  }, []);
+  const onSetAbcTempo = useCallback((bpm: number) => {
+    abcControllerRef.current?.setTempo(bpm);
+  }, []);
+  const onResetAbcTempo = useCallback(() => {
+    abcControllerRef.current?.resetTempo();
+  }, []);
+  const onSetAbcCountIn = useCallback((bars: AbcCountInBars) => {
+    abcControllerRef.current?.setCountIn(bars);
+  }, []);
+  const onSetDrilling = useCallback((on: boolean) => {
+    setDrilling(on);
+    ppControllerRef.current?.setDrillingEnabled(on);
+    abcControllerRef.current?.setDrillingEnabled(on);
+  }, []);
+  const onSetAbcFingers = useCallback((on: boolean) => {
+    setFingers(on);
+    abcControllerRef.current?.setFingers(on);
+  }, []);
+  const onStartAbc = useCallback(() => {
+    abcControllerRef.current?.start();
+  }, []);
+  // The screen polls this while a play-along is live (stable identity: the
+  // polling effect depends on it).
+  const getAbcPlayAlongView = useCallback(() => abcControllerRef.current?.getPlayAlongView(), []);
+  const onStopAbcPlayAlong = useCallback(() => {
+    abcControllerRef.current?.stopPlayAlong();
+  }, []);
+  const onPlayAgainAbc = useCallback(() => {
+    abcControllerRef.current?.playAgain();
+  }, []);
+  const onPracticeMissedAbc = useCallback(() => {
+    abcControllerRef.current?.practiceMissedNotes();
+  }, []);
+  const onGiveUpAbc = useCallback(() => {
+    abcControllerRef.current?.giveUp();
+  }, []);
+  const onSkipDrillAbc = useCallback(() => {
+    abcControllerRef.current?.skipDrill();
+  }, []);
+  const onRestartAbc = useCallback(() => {
+    abcControllerRef.current?.restart();
+  }, []);
+
+  // The "capture paused / disconnected" notice (Phase 8) shown on both
+  // practice tabs, so a paused or lost input is never hidden behind the
+  // Finger Tuner tab.
+  const captureNotice =
+    captureState.status === 'paused' || captureState.status === 'error'
+      ? {
+          message: captureState.message,
+          actionLabel:
+            captureState.status === 'paused'
+              ? captureState.resumeMode === 'manual'
+                ? 'Resume listening'
+                : undefined
+              : 'Start listening',
+        }
+      : undefined;
+
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
@@ -339,6 +467,7 @@ export default function App() {
           active={mode === 'practice'}
           onPress={() => setMode('practice')}
         />
+        <ModeTab label="ABC Notation" active={mode === 'abc'} onPress={() => setMode('abc')} />
       </View>
 
       {/* Both screens stay permanently mounted, toggled only via
@@ -377,20 +506,12 @@ export default function App() {
       >
         <PlayingPracticeScreen
           viewState={ppViewState}
-          captureNotice={
-            captureState.status === 'paused' || captureState.status === 'error'
-              ? {
-                  message: captureState.message,
-                  actionLabel:
-                    captureState.status === 'paused'
-                      ? captureState.resumeMode === 'manual'
-                        ? 'Resume listening'
-                        : undefined
-                      : 'Start listening',
-                }
-              : undefined
-          }
+          captureNotice={captureNotice}
           onResumeCapture={onStart}
+          noteDisplay={noteDisplay}
+          onSetNoteDisplay={setNoteDisplay}
+          drilling={drilling}
+          onSetDrilling={onSetDrilling}
           onToggleString={onToggleString}
           onSetPatternType={onSetPatternType}
           onSetDirection={onSetDirection}
@@ -400,6 +521,39 @@ export default function App() {
           onGiveUp={onGiveUpPractice}
           onSkipDrill={onSkipDrillPractice}
           onRestart={onRestartPractice}
+        />
+      </ScrollView>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.scroll}
+        style={mode === 'abc' ? styles.flexOne : styles.hiddenScreen}
+      >
+        <AbcPracticeScreen
+          viewState={abcViewState}
+          captureNotice={captureNotice}
+          onResumeCapture={onStart}
+          noteDisplay={noteDisplay}
+          onSetNoteDisplay={setNoteDisplay}
+          drilling={drilling}
+          onSetDrilling={onSetDrilling}
+          visible={mode === 'abc'}
+          getPlayAlongView={getAbcPlayAlongView}
+          onImport={onImportAbc}
+          onSelectTune={onSelectAbcTune}
+          onSetTranspose={onSetAbcTranspose}
+          onSetStyle={onSetAbcStyle}
+          onSetTempo={onSetAbcTempo}
+          onResetTempo={onResetAbcTempo}
+          onSetCountIn={onSetAbcCountIn}
+          fingers={fingers}
+          onSetFingers={onSetAbcFingers}
+          onStart={onStartAbc}
+          onGiveUp={onGiveUpAbc}
+          onSkipDrill={onSkipDrillAbc}
+          onStopPlayAlong={onStopAbcPlayAlong}
+          onPlayAgain={onPlayAgainAbc}
+          onPracticeMissed={onPracticeMissedAbc}
+          onRestart={onRestartAbc}
         />
       </ScrollView>
     </View>

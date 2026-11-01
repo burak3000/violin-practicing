@@ -96,9 +96,15 @@
 
 import {
   TargetNoteDwellTracker,
+  centsOffTarget,
+  gateReading,
+  isWithinTolerance,
   type DwellTrackerConfig,
   type PitchReading,
 } from '../scoring/scoring.js';
+
+/** What the dwell tracker is fed in place of a frame that must not count yet. */
+const NO_PITCH: PitchReading = { voiced: false, frequencyHz: 0, confidence: 0 };
 
 /**
  * Maximum wall-clock time (ms), measured from this tracker's first
@@ -115,6 +121,18 @@ export const DEFAULT_ATTEMPT_TIMEOUT_MS = 10_000;
 export interface PracticeAttemptTrackerConfig extends DwellTrackerConfig {
   /** See `DEFAULT_ATTEMPT_TIMEOUT_MS`. Must be > 0 (use `Number.POSITIVE_INFINITY` to disable, not a huge finite number). */
   readonly timeoutMs?: number;
+  /**
+   * Require the player to *leave* the target pitch at least once before the
+   * dwell clock may start. Set this when the previous target had the same
+   * pitch (a repeated note in a tune): without it, simply continuing to hold
+   * the previous note would satisfy the new target the moment it appears.
+   * "Leaving" is any frame that isn't a trustworthy, in-tolerance reading of
+   * the target -- a gap in the sound, a bow-change dropout, or a different
+   * pitch. Until that first frame, in-tune readings are treated as silence
+   * (they neither advance the dwell clock nor count as released). The
+   * attempt timeout keeps running regardless. Default false.
+   */
+  readonly requireReleaseFirst?: boolean;
 }
 
 export type PracticeAttemptStatus =
@@ -151,14 +169,21 @@ export type PracticeAttemptStatus =
  */
 export class PracticeAttemptTracker {
   private readonly dwellTracker: TargetNoteDwellTracker;
+  private readonly targetFrequencyHz: number;
+  private readonly config: PracticeAttemptTrackerConfig;
   private readonly timeoutMs: number;
   private startTimestampMs: number | undefined;
   private decided: Extract<PracticeAttemptStatus, { status: 'succeeded' | 'failed' }> | undefined;
+  /** True until the first frame that is not an in-tune reading of the target (only ever set when `requireReleaseFirst`). */
+  private awaitingRelease: boolean;
 
   constructor(targetFrequencyHz: number, config: PracticeAttemptTrackerConfig = {}) {
     // Propagates TargetNoteDwellTracker's own `targetFrequencyHz > 0`
     // validation (RangeError) -- not re-checked here, one source of truth.
     this.dwellTracker = new TargetNoteDwellTracker(targetFrequencyHz, config);
+    this.targetFrequencyHz = targetFrequencyHz;
+    this.config = config;
+    this.awaitingRelease = config.requireReleaseFirst ?? false;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS;
     if (!(this.timeoutMs > 0)) {
       throw new RangeError(`PracticeAttemptTracker: timeoutMs must be > 0, got ${this.timeoutMs}`);
@@ -183,7 +208,16 @@ export class PracticeAttemptTracker {
       this.startTimestampMs = timestampMs;
     }
 
-    if (this.dwellTracker.update(reading, timestampMs)) {
+    let scored = reading;
+    if (this.awaitingRelease) {
+      if (this.isInTuneOnTarget(reading)) {
+        scored = NO_PITCH;
+      } else {
+        this.awaitingRelease = false;
+      }
+    }
+
+    if (this.dwellTracker.update(scored, timestampMs)) {
       this.decided = { status: 'succeeded' };
       return this.decided;
     }
@@ -195,6 +229,14 @@ export class PracticeAttemptTracker {
     }
 
     return { status: 'in-progress', heldMs: this.dwellTracker.currentHeldMs, elapsedMs };
+  }
+
+  private isInTuneOnTarget(reading: PitchReading): boolean {
+    const gated = gateReading(reading, this.config);
+    return (
+      gated.ok &&
+      isWithinTolerance(centsOffTarget(gated.frequencyHz, this.targetFrequencyHz), this.config)
+    );
   }
 
   /**
@@ -217,5 +259,6 @@ export class PracticeAttemptTracker {
     this.dwellTracker.reset();
     this.startTimestampMs = undefined;
     this.decided = undefined;
+    this.awaitingRelease = this.config.requireReleaseFirst ?? false;
   }
 }

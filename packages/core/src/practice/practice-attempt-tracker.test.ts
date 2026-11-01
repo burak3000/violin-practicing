@@ -231,6 +231,111 @@ describe('PracticeAttemptTracker: reset', () => {
   });
 });
 
+describe('PracticeAttemptTracker: requireReleaseFirst (repeated same-pitch targets)', () => {
+  it('does not count a note that was already sounding when the target appeared', () => {
+    const tracker = new PracticeAttemptTracker(440, {
+      minDwellTimeMs: 100,
+      requireReleaseFirst: true,
+    });
+    // The player is still holding the previous (same-pitch) note.
+    expect(tracker.update(voiced(440), 0)).toEqual({
+      status: 'in-progress',
+      heldMs: 0,
+      elapsedMs: 0,
+    });
+    expect(tracker.update(voiced(440), 100)).toEqual({
+      status: 'in-progress',
+      heldMs: 0,
+      elapsedMs: 100,
+    });
+    expect(tracker.update(voiced(440), 500)).toMatchObject({ status: 'in-progress', heldMs: 0 });
+  });
+
+  it('starts counting after a gap, and succeeds once the dwell time is held afterwards', () => {
+    const tracker = new PracticeAttemptTracker(440, {
+      minDwellTimeMs: 100,
+      requireReleaseFirst: true,
+    });
+    tracker.update(voiced(440), 0);
+    tracker.update(voiced(440), 50);
+    tracker.update(unvoiced, 100); // bow change / gap: released
+    expect(tracker.update(voiced(440), 150)).toMatchObject({ status: 'in-progress', heldMs: 0 });
+    expect(tracker.update(voiced(440), 200)).toMatchObject({ status: 'in-progress', heldMs: 50 });
+    expect(tracker.update(voiced(440), 250)).toEqual({ status: 'succeeded' });
+  });
+
+  it('counts moving to a different pitch as leaving the target', () => {
+    const tracker = new PracticeAttemptTracker(440, {
+      minDwellTimeMs: 100,
+      requireReleaseFirst: true,
+    });
+    tracker.update(voiced(440), 0);
+    tracker.update(voiced(660), 50); // a clearly different pitch
+    tracker.update(voiced(440), 100);
+    expect(tracker.update(voiced(440), 200)).toEqual({ status: 'succeeded' });
+  });
+
+  it('counts a low-confidence frame as a release', () => {
+    const tracker = new PracticeAttemptTracker(440, {
+      minDwellTimeMs: 100,
+      requireReleaseFirst: true,
+    });
+    tracker.update(voiced(440), 0);
+    tracker.update(voiced(440, 0.1), 50);
+    tracker.update(voiced(440), 100);
+    expect(tracker.update(voiced(440), 200)).toEqual({ status: 'succeeded' });
+  });
+
+  it('still times out if the player never lets go of the previous note', () => {
+    const tracker = new PracticeAttemptTracker(440, {
+      minDwellTimeMs: 100,
+      timeoutMs: 1000,
+      requireReleaseFirst: true,
+    });
+    tracker.update(voiced(440), 0);
+    expect(tracker.update(voiced(440), 1000)).toEqual({ status: 'failed', reason: 'timeout' });
+  });
+
+  it('can still be given up on manually while waiting for the release', () => {
+    const tracker = new PracticeAttemptTracker(440, { requireReleaseFirst: true });
+    tracker.update(voiced(440), 0);
+    expect(tracker.giveUp()).toEqual({ status: 'failed', reason: 'manual' });
+  });
+
+  it('is off by default: a note already sounding counts immediately', () => {
+    const tracker = new PracticeAttemptTracker(440, { minDwellTimeMs: 100 });
+    tracker.update(voiced(440), 0);
+    expect(tracker.update(voiced(440), 100)).toEqual({ status: 'succeeded' });
+  });
+
+  it('reset() re-arms the release requirement', () => {
+    const tracker = new PracticeAttemptTracker(440, {
+      minDwellTimeMs: 100,
+      requireReleaseFirst: true,
+    });
+    tracker.update(unvoiced, 0);
+    tracker.update(voiced(440), 50);
+    expect(tracker.update(voiced(440), 150)).toEqual({ status: 'succeeded' });
+
+    tracker.reset();
+    tracker.update(voiced(440), 1000);
+    expect(tracker.update(voiced(440), 1200)).toMatchObject({ status: 'in-progress', heldMs: 0 });
+  });
+
+  it('honours a custom tolerance when deciding whether a frame still counts as the held target', () => {
+    const tracker = new PracticeAttemptTracker(440, {
+      minDwellTimeMs: 100,
+      requireReleaseFirst: true,
+      inTuneCentsTolerance: 10,
+    });
+    tracker.update(voiced(440), 0);
+    // 20 cents sharp: outside the 10c tolerance, so this is a release even though it is the "same note".
+    tracker.update(voiced(440 * 2 ** (20 / 1200)), 50);
+    tracker.update(voiced(440), 100);
+    expect(tracker.update(voiced(440), 200)).toEqual({ status: 'succeeded' });
+  });
+});
+
 describe('PracticeAttemptTracker: config passthrough to the underlying dwell tracker', () => {
   it('honors a custom inTuneCentsTolerance', () => {
     const tracker = new PracticeAttemptTracker(440, {

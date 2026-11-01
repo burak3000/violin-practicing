@@ -70,7 +70,7 @@ export const DEFAULT_MIN_CONFIDENCE = 0.5;
  * confident note (double-stops / non-violin noise edge case).
  */
 export const DEFAULT_MIN_FREQUENCY_HZ = 150;
-export const DEFAULT_MAX_FREQUENCY_HZ = 1600;
+export const DEFAULT_MAX_FREQUENCY_HZ = 3000;
 
 /**
  * Minimum time (ms) a pitch must stay continuously within the in-tune

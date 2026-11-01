@@ -25,7 +25,7 @@ describe('defaults', () => {
     expect(DEFAULT_IN_TUNE_CENTS_TOLERANCE).toBe(25);
     expect(DEFAULT_MIN_CONFIDENCE).toBe(0.5);
     expect(DEFAULT_MIN_FREQUENCY_HZ).toBe(150);
-    expect(DEFAULT_MAX_FREQUENCY_HZ).toBe(1600);
+    expect(DEFAULT_MAX_FREQUENCY_HZ).toBe(3000);
     expect(DEFAULT_MIN_DWELL_TIME_MS).toBe(150);
   });
 });
@@ -49,12 +49,12 @@ describe('gateReading', () => {
 
   it('rejects frequencies outside the plausible violin range on either side', () => {
     expect(gateReading(voiced(149.9))).toEqual({ ok: false });
-    expect(gateReading(voiced(1600.1))).toEqual({ ok: false });
+    expect(gateReading(voiced(3000.1))).toEqual({ ok: false });
   });
 
   it('accepts exactly at the plausible-range boundaries (inclusive)', () => {
     expect(gateReading(voiced(150))).toEqual({ ok: true, frequencyHz: 150 });
-    expect(gateReading(voiced(1600))).toEqual({ ok: true, frequencyHz: 1600 });
+    expect(gateReading(voiced(3000))).toEqual({ ok: true, frequencyHz: 3000 });
   });
 
   it('respects overridden config', () => {
