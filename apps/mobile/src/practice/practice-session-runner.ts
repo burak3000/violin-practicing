@@ -37,11 +37,21 @@ import {
   PracticeAttemptTracker,
   PracticeSessionController,
   centsOffTarget,
+  describeFinger,
+  fingerMarkFor,
+  fingerMarksOf,
+  formatSpellingLabel,
+  spellMidiInKey,
+  staffSpellingOf,
+  type AbcPiece,
+  type FingerMark,
   type FingerTunerReading,
+  type KeyOffsets,
   type PitchReading,
   type PracticeAttemptStatus,
   type PracticeSessionState,
   type SequenceNote,
+  type StaffNote,
 } from '@violin/core';
 
 /**
@@ -59,6 +69,13 @@ const SUCCESS_PAUSE_MS = 700;
 const UPCOMING_NOTE_COUNT = 4;
 
 /**
+ * How many notes after the target the staff is given to choose from. It draws
+ * only as many as fit across the screen at a readable spacing (a phone fits
+ * about eight, a tablet far more), so this just needs to exceed any screen.
+ */
+const STAFF_LOOKAHEAD_NOTES = 40;
+
+/**
  * The brief post-attempt banner Playing Practice/Drilling show before
  * advancing: "Nice!" (a non-final Playing Practice success), "Mastered!" (a
  * drill ending via `requiredConsecutiveCorrect`), or "Moving on" (a drill
@@ -70,6 +87,51 @@ const UPCOMING_NOTE_COUNT = 4;
 export interface PlayingPracticeBanner {
   readonly text: string;
   readonly tone: 'success' | 'neutral';
+}
+
+/**
+ * Sheet-music context for a session over ABC notes (the "Wait for me" style
+ * and its "practice the missed notes" follow-up). Playing Practice never
+ * passes it, which is how its labels and display stay exactly as they were.
+ */
+export interface PracticeSessionAbcOptions {
+  /**
+   * The key signature the piece is written in. With it, letter labels use the
+   * sheet's own spelling ("B♭4", never "A#4"), and the "Hearing ..." line
+   * spells what the detector heard the way that key writes it
+   * (`spellMidiInKey`).
+   */
+  readonly key: KeyOffsets;
+  /**
+   * The piece being practiced *in order*: the Staff display then draws the
+   * notated score window around the target (`PracticeSessionScore`) instead of
+   * the rhythm-less lookahead staff. Left out when the notes are not the
+   * piece in order (practicing just the missed notes), where a score window
+   * would show the wrong neighbours.
+   */
+  readonly piece?: AbcPiece;
+  /** Show finger numbers (from the file, else a first-position suggestion): a line under the letter name and digits on the score. */
+  readonly fingers?: boolean;
+}
+
+/**
+ * Where the target note is in the notated piece: the Staff display of an ABC
+ * session draws the score window that starts at the target's bar, with the
+ * note at `targetIndex` (into `piece.notes`) highlighted. Follows Drilling's
+ * current target as well, and -- like the other cached display fields -- keeps
+ * showing the note just played while a banner is up.
+ */
+export interface PracticeSessionScore {
+  readonly piece: AbcPiece;
+  readonly targetIndex: number;
+  /** Finger numbers to draw over the notes (indexed by note), when they are switched on. Same array for the whole session. */
+  readonly fingers?: readonly (FingerMark | undefined)[];
+}
+
+/** The finger of the target note, as words ("Finger 2", "Open string"); `source` tells a number the file wrote from a suggestion. */
+export interface PracticeSessionFinger {
+  readonly text: string;
+  readonly source: 'file' | 'suggested';
 }
 
 /**
@@ -100,6 +162,18 @@ export type PlayingPracticeSessionViewState =
        * reading a sheet), and empty while drilling.
        */
       readonly upcomingText?: string;
+      /**
+       * The notes to draw if the target is shown on a staff instead of as a
+       * letter name: the target first, then -- for runners created with
+       * `showUpcoming`, outside drilling -- up to 40 notes after it, of which
+       * the staff draws as many as fit the screen width. Always set; the
+       * screen decides whether to use it.
+       */
+      readonly staffNotes: readonly StaffNote[];
+      /** Present only for sessions started with `PracticeSessionAbcOptions.piece`; see `PracticeSessionScore`. */
+      readonly score?: PracticeSessionScore;
+      /** Present only when finger numbers are on and the target has one. */
+      readonly finger?: PracticeSessionFinger;
     }
   | { readonly kind: 'complete' };
 
@@ -116,12 +190,26 @@ function formatSignedCents(cents: number): string {
   return `${sign}${Math.abs(rounded)}c`;
 }
 
-/** What to show on the live "what am I currently hearing" line -- cents measured from the *target* (`centsOffTarget`), not from the nearest note in general, so the sign directly tells the player which way to adjust. */
-function formatLiveFeedback(rawReading: FingerTunerReading, targetFrequencyHz: number): string {
+/**
+ * What to show on the live "what am I currently hearing" line -- cents
+ * measured from the *target* (`centsOffTarget`), not from the nearest note in
+ * general, so the sign directly tells the player which way to adjust. With a
+ * `key` (ABC sessions) the heard pitch is spelled the way a piece in that key
+ * writes it ("B♭4" in F major, not "A#4").
+ */
+function formatLiveFeedback(
+  rawReading: FingerTunerReading,
+  targetFrequencyHz: number,
+  key: KeyOffsets | undefined,
+): string {
   if (rawReading.status === 'no-signal') return 'No signal';
   if (rawReading.status === 'unclear') return 'Unclear signal…';
   const cents = centsOffTarget(rawReading.frequencyHz, targetFrequencyHz);
-  return `Hearing ${rawReading.note.label} (${formatSignedCents(cents)} from target)`;
+  const heard =
+    key === undefined
+      ? rawReading.note.label
+      : formatSpellingLabel(spellMidiInKey(rawReading.note.midi, key));
+  return `Hearing ${heard} (${formatSignedCents(cents)} from target)`;
 }
 
 /**
@@ -174,13 +262,51 @@ export class PracticeSessionRunner {
   private currentProgressText = '';
   private currentTargetNoteLabel = '';
   private currentUpcomingText = '';
+  private currentStaffNotes: readonly StaffNote[] = [];
+  private currentScore: PracticeSessionScore | undefined;
+  private currentFinger: PracticeSessionFinger | undefined;
+  /** The note the display currently shows as the target (kept through a banner pause, like the other cached fields). */
+  private currentTargetNote: SequenceNote | undefined;
+  /** One finger mark per note of the session, when finger numbers are on. */
+  private fingerMarks: readonly (FingerMark | undefined)[] | undefined;
+  /** Sheet-music context of the running session, if any (see `PracticeSessionAbcOptions`). */
+  private abc: PracticeSessionAbcOptions | undefined;
 
   private readonly onChange: () => void;
   private readonly showUpcoming: boolean;
+  /** When false a missed note moves straight on instead of starting a drill. Takes effect from the next miss. */
+  private drillingEnabled = true;
 
   constructor(options: PracticeSessionRunnerOptions) {
     this.onChange = options.onChange;
     this.showUpcoming = options.showUpcoming ?? false;
+  }
+
+  private fingerOf(note: SequenceNote): PracticeSessionFinger | undefined {
+    const mark = this.fingerMarks ? fingerMarkFor(note) : undefined;
+    return mark ? { text: describeFinger(mark), source: mark.source } : undefined;
+  }
+
+  /** Finger numbers on or off right now, mid-session included: only the display changes, the attempt in progress is untouched. */
+  setFingers(on: boolean): void {
+    if (!this.abc) return;
+    this.abc = { ...this.abc, fingers: on };
+    this.fingerMarks = on ? fingerMarksOf(this.notes) : undefined;
+    if (this.currentScore) {
+      const { piece, targetIndex } = this.currentScore;
+      this.currentScore = {
+        piece,
+        targetIndex,
+        ...(this.fingerMarks ? { fingers: this.fingerMarks } : {}),
+      };
+    }
+    this.currentFinger = this.currentTargetNote ? this.fingerOf(this.currentTargetNote) : undefined;
+    this.onChange();
+  }
+
+  /** Switches drilling on or off (default on): off means a missed note just moves on to the next note. */
+  setDrillingEnabled(enabled: boolean): void {
+    this.drillingEnabled = enabled;
   }
 
   /** True from `begin()` until `end()` (including the complete screen). */
@@ -212,12 +338,22 @@ export class PracticeSessionRunner {
       showSkipDrillButton: isDrilling,
       banner: this.currentBanner,
       ...(this.showUpcoming ? { upcomingText: this.currentUpcomingText } : {}),
+      staffNotes: this.currentStaffNotes,
+      ...(this.currentScore ? { score: this.currentScore } : {}),
+      ...(this.currentFinger ? { finger: this.currentFinger } : {}),
     };
   }
 
-  /** Starts a session over `notes` (must be non-empty). */
-  begin(notes: readonly SequenceNote[]): void {
+  /**
+   * Starts a session over `notes` (must be non-empty). `abc` is given only for
+   * sheet-music sessions; without it (Playing Practice) the labels, the
+   * "Hearing ..." line and the staff are exactly what they were before ABC
+   * practice existed.
+   */
+  begin(notes: readonly SequenceNote[], abc?: PracticeSessionAbcOptions): void {
+    this.abc = abc;
     this.notes = notes;
+    this.fingerMarks = abc?.fingers === true ? fingerMarksOf(notes) : undefined;
     this.sessionController = new PracticeSessionController(notes);
     this.pauseUntilMs = undefined;
     this.lastSucceededMidi = undefined;
@@ -231,7 +367,17 @@ export class PracticeSessionRunner {
     this.pauseUntilMs = undefined;
     this.lastSucceededMidi = undefined;
     this.currentBanner = undefined;
+    this.currentScore = undefined;
+    this.currentFinger = undefined;
+    this.currentTargetNote = undefined;
+    this.fingerMarks = undefined;
+    this.abc = undefined;
     this.notes = [];
+  }
+
+  /** How a note reads as a letter label: the sheet's own spelling for ABC sessions ("B♭4"), the sharps-only name otherwise. */
+  private labelOf(note: SequenceNote): string {
+    return this.abc ? formatSpellingLabel(staffSpellingOf(note)) : note.note.label;
   }
 
   /**
@@ -294,12 +440,35 @@ export class PracticeSessionRunner {
       : `Note ${state.index + 1} of ${this.notes.length}`;
     // Drilling rotates through neighbors rather than walking the piece, so a
     // "what's next" preview would mislead there.
-    const next = isDrilling
-      ? []
-      : this.notes.slice(state.index + 1, state.index + 1 + UPCOMING_NOTE_COUNT);
+    const next =
+      isDrilling || !this.showUpcoming
+        ? []
+        : this.notes.slice(state.index + 1, state.index + 1 + UPCOMING_NOTE_COUNT);
     this.currentUpcomingText =
-      next.length > 0 ? `Next: ${next.map((n) => n.note.label).join(' ')}` : '';
-    this.currentTargetNoteLabel = state.targetNote.note.label;
+      next.length > 0 ? `Next: ${next.map((n) => this.labelOf(n)).join(' ')}` : '';
+    this.currentTargetNoteLabel = this.labelOf(state.targetNote);
+    // Identity lookup: the session (and Drilling's pool) hand back the very
+    // objects of `notes`. Done once per target, not per frame.
+    const scorePiece = this.abc?.piece;
+    const scoreIndex = scorePiece === undefined ? -1 : this.notes.indexOf(state.targetNote);
+    this.currentScore =
+      scorePiece !== undefined && scoreIndex >= 0
+        ? {
+            piece: scorePiece,
+            targetIndex: scoreIndex,
+            ...(this.fingerMarks ? { fingers: this.fingerMarks } : {}),
+          }
+        : undefined;
+    this.currentTargetNote = state.targetNote;
+    this.currentFinger = this.fingerOf(state.targetNote);
+    const staffAhead =
+      isDrilling || !this.showUpcoming
+        ? []
+        : this.notes.slice(state.index + 1, state.index + 1 + STAFF_LOOKAHEAD_NOTES);
+    this.currentStaffNotes = [
+      { spelling: staffSpellingOf(state.targetNote), role: 'target' },
+      ...staffAhead.map((n): StaffNote => ({ spelling: staffSpellingOf(n), role: 'upcoming' })),
+    ];
 
     // Live feedback + dwell progress are shared by Playing Practice and
     // Drilling. Reset on every new target regardless of mode: the fresh
@@ -378,6 +547,15 @@ export class PracticeSessionRunner {
 
     // result.status === 'failed' (timeout or manual giveUp())
     this.sessionController.reportOutcome('failure');
+    if (!this.drillingEnabled && this.sessionController.state.mode === 'drilling') {
+      if (stateBefore.mode !== 'drilling') {
+        // Drilling is switched off: a missed note is simply left behind, as if the player had skipped
+        // the drill at once. (A drill already under way when the switch is turned off finishes normally.)
+        this.sessionController.skipDrill();
+        this.showDrillEndBanner('capped', timestampMs);
+        return;
+      }
+    }
     if (stateBefore.mode === 'drilling' && this.sessionController.state.mode !== 'drilling') {
       // Unlike the success path above, no inference is needed here: a
       // failure can only ever end a drill via the attempt cap, never
@@ -440,7 +618,11 @@ export class PracticeSessionRunner {
     // whenever mode is 'complete', so the guard above already rules that out.
     const state = this.sessionController.state;
     if (state.mode === 'playing-practice' || state.mode === 'drilling') {
-      this.liveFeedbackText = formatLiveFeedback(rawReading, state.targetNote.frequencyHz);
+      this.liveFeedbackText = formatLiveFeedback(
+        rawReading,
+        state.targetNote.frequencyHz,
+        this.abc?.key,
+      );
     }
 
     this.applyResult(this.tracker.update(reading, timestampMs), timestampMs);

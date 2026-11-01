@@ -214,7 +214,9 @@ function listIowaFixtureFilenames(): string[] {
 }
 
 function analyzeAudioFixture(samples: Float32Array, sampleRateHz: number): AnalyzedFrame[] {
-  const pipeline = new PitchAnalysisPipeline(forViolin(sampleRateHz));
+  const pipeline = // The checked-in C++ reference snapshots were made with the original 150-1600 Hz detector range;
+    // the app's own default ceiling is higher now, so pin the range here to keep comparing like with like.
+    new PitchAnalysisPipeline({ ...forViolin(sampleRateHz), maxFrequencyHz: 1600 });
   const frames: AnalyzedFrame[] = [];
   for (
     let startSample = 0;

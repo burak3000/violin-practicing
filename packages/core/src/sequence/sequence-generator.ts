@@ -19,6 +19,7 @@ import {
   midiToFrequencyHz,
   type NoteName,
 } from '../note/note.js';
+import { spellMidi, type NoteSpelling } from '../notation/note-spelling.js';
 import {
   FIRST_POSITION_SEMITONE_OFFSETS,
   MAJOR_SCALE_SEMITONE_OFFSETS,
@@ -74,7 +75,7 @@ export interface SequenceGeneratorConfig {
 }
 
 export const DEFAULT_SEQUENCE_MIN_FREQUENCY_HZ = 150;
-export const DEFAULT_SEQUENCE_MAX_FREQUENCY_HZ = 1600;
+export const DEFAULT_SEQUENCE_MAX_FREQUENCY_HZ = 3000;
 
 export interface SequenceNote {
   readonly note: NoteName;
@@ -86,6 +87,18 @@ export interface SequenceNote {
    * tune, see ../abc/abc-practice.ts) -- nothing outside this module reads it.
    */
   readonly sourceString?: ViolinStringName;
+  /**
+   * The finger (1-4, or 0 for an open string) the ABC file itself writes for this note
+   * (`!2!`). `undefined` for generated notes and for notes the file leaves unmarked;
+   * see `fingerMarkFor` for what the app shows in that case.
+   */
+  readonly finger?: number;
+  /**
+   * How the note is written on a staff, when that differs from the sharps-only
+   * spelling of `note` (an ABC tune in B-flat writes B-flat, not A-sharp).
+   * `undefined` means "spell it from `note.midi`" -- see `staffSpellingOf`.
+   */
+  readonly spelling?: NoteSpelling;
 }
 
 function offsetsForPattern(patternType: SequencePatternType): readonly number[] {
@@ -178,4 +191,9 @@ export function generatePlayingPracticeSequence(
   );
 
   return notes.filter((n) => n.frequencyHz >= minFrequencyHz && n.frequencyHz <= maxFrequencyHz);
+}
+
+/** The spelling to draw `note` with on a staff: its written spelling if it has one, else the sharps-only spelling of its MIDI number. */
+export function staffSpellingOf(note: SequenceNote): NoteSpelling {
+  return note.spelling ?? spellMidi(note.note.midi);
 }

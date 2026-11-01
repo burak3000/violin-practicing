@@ -56,7 +56,7 @@ describe('PlayingPracticeController: initial state', () => {
       patternType: 'stepwise-first-position',
       direction: 'ascending',
       minFrequencyText: '150',
-      maxFrequencyText: '1600',
+      maxFrequencyText: '3000',
     });
     expect(state.preview.kind).toBe('ok');
     expect(state.configError).toBeUndefined();
@@ -245,6 +245,29 @@ describe('PlayingPracticeController: live feedback text', () => {
   });
 });
 
+describe('PlayingPracticeController: stays sharps-only and score-less (ABC practice does not change it)', () => {
+  it('spells what it hears with sharps, shows letter names, and carries no ABC fields', () => {
+    const controller = new PlayingPracticeController();
+    controller.setStringSelected('G', false);
+    controller.setStringSelected('A', false);
+    controller.setStringSelected('E', false);
+    controller.setPatternType('one-octave-scale');
+    controller.start();
+
+    // A#4 (466.16 Hz): an ABC session in a flat key would call this B-flat.
+    const aSharp = voiced(466.164);
+    controller.handleAnalysisFrame(aSharp, analyzeTunerReading(aSharp), 0);
+    const state = controller.getViewState();
+    expectActiveSession(state);
+    expect(state.session).toMatchObject({ targetNoteLabel: 'D4' });
+    expect((state.session as { liveFeedbackText: string }).liveFeedbackText).toMatch(
+      /^Hearing A#4 \(/,
+    );
+    expect(state.session).not.toHaveProperty('score');
+    expect(state.session).not.toHaveProperty('upcomingText');
+  });
+});
+
 describe('PlayingPracticeController: give-up hands off to Drilling', () => {
   it('giveUp() ends the attempt and enters drilling mode, now showing live progress/feedback/dwell chrome and the skip-drill button instead of the give-up button (Phase 7)', () => {
     const controller = startSingleNoteSession();
@@ -263,6 +286,8 @@ describe('PlayingPracticeController: give-up hands off to Drilling', () => {
       showGiveUpButton: false,
       showSkipDrillButton: true,
       banner: undefined,
+      // The target as it would be drawn on a staff (open G, no upcoming preview in Playing Practice).
+      staffNotes: [{ spelling: { letter: 'G', accidental: 0, octave: 3 }, role: 'target' }],
     });
   });
 });
@@ -637,5 +662,42 @@ describe('PlayingPracticeController: repeated timeout hits the attempt cap ("Mov
       targetNoteLabel: 'D4',
       banner: undefined,
     });
+  });
+});
+
+describe('PlayingPracticeController: drilling can be switched off', () => {
+  /** Open strings G D A E, so a missed note has a next note to move on to. */
+  function startFourNoteSession(drilling: boolean): PlayingPracticeController {
+    const controller = new PlayingPracticeController();
+    controller.setDrillingEnabled(drilling);
+    controller.setPatternType('open-strings');
+    controller.start();
+    return controller;
+  }
+
+  it('with drilling off, a given-up note moves on instead of starting a drill', () => {
+    const controller = startFourNoteSession(false);
+    controller.giveUp();
+    const state = controller.getViewState();
+    expectActiveSession(state);
+    // The "Moving on" banner is up for a moment, then the next note (D4) is the target; never a drill.
+    expect(state.session.banner?.text).toBe('Moving on');
+    expect(state.session.mode).not.toBe('drilling');
+    expect(state.session.showSkipDrillButton).toBe(false);
+  });
+
+  it('with drilling off, a miss on the last note finishes the sequence', () => {
+    const controller = startSingleNoteSession();
+    controller.setDrillingEnabled(false);
+    controller.giveUp();
+    expect(controller.getViewState()).toMatchObject({ session: { kind: 'complete' } });
+  });
+
+  it('with drilling on (the default) a given-up note starts a drill as before', () => {
+    const controller = startFourNoteSession(true);
+    controller.giveUp();
+    const state = controller.getViewState();
+    expectActiveSession(state);
+    expect(state.session.mode).toBe('drilling');
   });
 });

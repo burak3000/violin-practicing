@@ -24,6 +24,8 @@ Phase 0 left this as a placeholder window. Phase 3 (see the plan's Phase 3 secti
 
 **ABC Notation practice (added after Phase 8, at the user's request):** a third mode tab, "ABC Notation", imports an ABC sheet-music file and practices its notes in order through the same session machinery as Playing Practice. New files: `src/abc-practice-ui.ts` (the import/preview UI) and `src/practice-session-view.ts` (the session half of `PlayingPracticeUi`, **extracted unchanged** so both modes share it); `playing-practice-ui.ts` now only owns the sequence-config controls and delegates the session to the view. `index.html`/`index.css`/`renderer.ts` gained the tab, the `#abc-practice` section (its own `abc-*` element ids, reusing the `pp-*` classes) and the bindings. Parsing and the sequence conversion are `packages/core`'s `parseAbc`/`buildAbcPracticeSequence` (see `packages/core/CLAUDE.md`'s "ABC notation"). See "ABC Notation practice" below.
 
+**ABC tempo, beats and play-along (added after the ABC mode, at the user's request):** the ABC tab now has two practice styles. **Play along** (default) is a timed run: a metronome clicks at the tempo, the piece advances on the beat, each note must be in tune _and_ on time, and the missed notes are listed at the end (no Drilling). **Wait for me** is the previous untimed flow, now with real notation (key signature, accidentals only where needed, flat names). Tempo and meter are read from the file, the tempo is adjustable in the UI without touching the file. New files: `src/play-along-view.ts` (the run screen + results card), `src/score-view.ts` (draws core's sheet-music layout and recolours notes/moves a playhead without redrawing), `src/audio/metronome.ts` (the audible click); `abc-practice-ui.ts`, `practice-session-view.ts`, `renderer.ts`, `index.html`, `index.css` changed. The timing, scoring and wording are `packages/core`'s `PlayAlongRunner` (see its "Timed play-along" section); the layout is core's `sizeScore`/`scoreLayoutToSvg`. See "ABC tempo, beats and play-along" below.
+
 **Explicitly not done here** (later phases, per the plan): no persistence wiring, no cross-platform conformance suite inside this package, and no richer reconnect workflow beyond the now-confirmed visible "Input device disconnected." error state (e.g. a dedicated reconnect button or auto-retry flow).
 
 **What's verified vs. what still needs the user** — see "Verification" near the end of this file. Short version: the DSP algorithm itself, the buffering/composition logic, and the wiring into `packages/core` are all verified programmatically (Vitest, against synthetic tones, comparable to Phase 1's own numbers) — as of Phase 4, from `packages/dsp-ts`'s own test suite rather than a local one, re-confirmed against this app after the move. The app builds, typechecks, and boots (both `pnpm start` and a full `pnpm package`) without errors — re-verified after the Phase 4 import-path change specifically because that's exactly the kind of thing the "Vite worklet-loading gotcha" below already proved can break silently. **Real microphone/line-in capture with a real signal has not been exercised** — that needs a human running the packaged app.
@@ -81,9 +83,22 @@ apps/desktop/
                                    feedback, dwell bar, banners, give-up/skip,
                                    complete screen), unchanged in behavior, now
                                    shared by Playing Practice and ABC practice.
+    staff-svg.ts                  renderStaff() -- draws core's layoutStaff() as
+                                   an inline SVG (treble clef, notes, ledger lines,
+                                   accidentals); colors come from index.css.
     abc-practice-ui.ts            AbcPracticeUi -- file import, tune/transpose
-                                   pickers, preview + warnings, Start; hands the
-                                   ABC-derived sequence to a PracticeSessionView.
+                                   pickers, preview + warnings, practice style
+                                   (Play along | Wait for me), tempo / count-in /
+                                   click settings, Start; hands the ABC-derived
+                                   sequence to a PracticeSessionView (Wait for me)
+                                   or builds a PlayAlongRunner for a PlayAlongView.
+    play-along-view.ts            PlayAlongView -- the timed run's screen: tempo,
+                                   beat dots, count-in/"Play!" cue, score or big
+                                   note name, live feedback, results card. Paints
+                                   runner.getView() every animation frame.
+    score-view.ts                 ScoreView -- one window of core's sheet-music
+                                   layout in a full-bleed container; per-note
+                                   colours and a playhead without redrawing.
 
     (no local dsp/ directory anymore -- see "Phase 4 update" above. The
      pure, dependency-free TypeScript port of packages/dsp-native's
@@ -117,6 +132,9 @@ apps/desktop/
                                      permission (to unlock device labels), enumerates
                                      `audioinput` devices, never throws (every failure
                                      path resolves to a typed `{ ok: false, error, message }`).
+      metronome.ts                    Metronome -- the audible click of the timed ABC
+                                     play-along (its own AudioContext, not the capture
+                                     graph's). See "ABC tempo, beats and play-along".
       capture-pipeline.ts             AudioCaptureController -- owns the live Web Audio
                                      graph (AudioContext + MediaStreamSource-or-
                                      OscillatorNode -> AudioWorkletNode -> muted GainNode
@@ -378,6 +396,14 @@ A third mode tab, **ABC Notation**, next to Finger Tuner and Playing Practice (s
 
 A missed note drills that note and its array-neighbors **in the tune** exactly as it does in a scale (`PracticeSessionController` is unchanged).
 
+### Letters / Staff display (added after the ABC mode)
+
+A **"Show notes as: Letters | Staff"** toggle sits under the mode tabs on the two practice tabs (hidden on Finger Tuner; one setting shared by both practice modes, kept in `renderer.ts`, **not persisted** -- v1 has no persistence by decision -- so it resets to Letters each launch). In Staff mode the big letter name is replaced by a **full-width** treble-clef staff drawn as inline SVG (`src/staff-svg.ts`, from `packages/core`'s `layoutStaff` and embedded Bravura glyphs -- see `packages/core/CLAUDE.md`'s "Staff notation"): the target in near-black, and, in ABC mode, **as many of the following notes as fit across the window** lighter (a 1280px-wide window shows the target plus eleven; the target stays put as the piece advances; the "Next:" text line is hidden then). The "Hearing X (+Nc from target)" feedback line stays in letters either way -- it describes what was _detected_, not the sheet.
+
+`PracticeSessionView.setNoteDisplay()` does the switching (it caches the notes it last drew, so toggling mid-session redraws instantly, and a banner pause keeps showing the just-played note like the letter does); `PlayingPracticeUi`/`AbcPracticeUi` pass it through. `index.html` gained `#note-display` and one `.pp-staff` container per mode (`#pp-staff`, `#abc-staff`).
+
+**Verified** in a real browser DOM (the real renderer page via Vite): staff/letters toggle in both modes, shared setting, hidden on the tuner tab; the staff rendered for flats (B-flat key), sharps, double sharp/flat, open G with two ledger lines below, and C6-G6 with up to four ledger lines above, enlarged to inspect geometry. **Full-bleed sizing:** the staff breaks out of the page's narrow (32rem) column to the window's full visible width (`PracticeSessionView.drawStaff()` sets the container to `document.documentElement.clientWidth` and centers it with a negative inline margin, so no horizontal scroll even with a scrollbar), core's `sizeStaff` picks the size of a staff space, and the height is capped at `min(40% of window height, 380px)`. It redraws on window resize. Checked at 1024px and 1500px wide windows (no horizontal overflow; notes spread symmetrically; height cap applies) and a single-note Playing Practice staff (centered). **Not verified:** the packaged app, and reading comfort at real playing distance (tune `STAFF_MAX_HEIGHT_PX` / the 40% in `practice-session-view.ts`).
+
 ### Range handling
 
 A tune with any note outside what a violin can play and the app can detect (below G3, above the 1600Hz ceiling) is **refused as a whole** with a count and, when one exists, a suggested octave shift ("Try transposing up an octave."); the user then picks it in the Transpose control. It never silently drops notes. There is no auto-transpose: the note names on screen should match the sheet unless the user chooses otherwise.
@@ -395,6 +421,93 @@ Tunes repeat notes ("C C G G"); scales never do. A player still holding the note
 - `pnpm --filter @violin/desktop typecheck` (main + worklet projects) clean; `pnpm lint`/`format:check` clean.
 - **Driven in a real browser DOM** (Vite serving the renderer; a temporary harness page, since deleted, mounted the real `#abc-practice` markup and fed `AbcPracticeUi` synthetic pitch frames at the real ~11.6ms hop cadence): file import through the real `<input type="file">`; tune picker; the too-low tune refused with the octave suggestion and accepted after transposing; a full three-note run (target changes, "Next:" preview, banners, complete screen, restart back to the import panel); a repeated A held straight through the next target did not advance until released; a wrong pitch for >10s timed out into Drilling, drilling to "Mastered!" resumed on the next note.
 - **Not verified:** the packaged Electron app's ABC tab (the in-app browser was used because it can run the renderer; the self-test tone could not start there, as `AudioContext.resume()` never resolved in that pane, which is unrelated to this feature); and **real violin input** -- in particular whether a real bow change on a repeated note produces a detectable release (if not, a repeated note times out into Drilling; the manual skip buttons always escape). A human with the instrument needs to play a tune with repeated notes through it.
+
+## ABC tempo, beats and play-along (added after the ABC mode)
+
+The user asked for "tempo and beats" in ABC practice, with flats and sharps handled properly, the tempo and beat information read from the imported file, and the tempo adjustable in the UI without modifying the file. Decisions made with the user: a **timed play-along** (a metronome clicks, the piece advances on the beat, each note must be in tune _and_ on time with a generous tolerance, the missed notes are listed at the end, no Drilling in this mode) and **real notation** (key signature, accidentals only where needed, `B♭4` rather than `A#4` in letter labels and in the "Hearing ..." line). The parsing of rhythm/meter/tempo, the beat grid and scoring (`PlayAlongPlan`/`PlayAlongSession`/`PlayAlongRunner`), the wording of the results, the score layout and the accidental rules are all `packages/core` (see its CLAUDE.md); this section is the desktop UI over them.
+
+### What it looks like
+
+The ABC panel (`#abc-practice`), after a file is imported:
+
+1. The preview summary now also names the tempo when the file gives one (`Ode to Joy · key D · 4/4 · ♩ = 100`).
+2. **Practice style**: **Play along** (default) | **Wait for me**, with a one-line description under it. Wait for me is the untimed flow, behaviorally unchanged.
+3. **Play-along settings** (only for Play along; disabled until a piece is ready):
+   - **Tempo ♩ = N**: a number field (20-300), -/+ buttons (1 bpm), and a slider covering a quarter to double the written tempo (within 20-300). The symbol is the beat unit of the file's tempo (`beatUnitSymbol`: `♩`, `♩.`, `♪`, or a fraction). A hint gives the percentage of the written tempo ("80% of the written tempo"), and says so when the file has no tempo marking ("(This file has no tempo marking; starting at ♩ = 80.)") or no time signature ("(No time signature in this file; assuming 4/4.)"). A **"Reset to written tempo (♩ = 100)"** button appears only while the tempo differs.
+   - **Count-in**: One bar (default) | Two bars | None, as `countInBeatsForBars(piece, bars)` (a piece with a pickup counts "1 2 3" and comes in on the pickup, not "4 1 2 3").
+   - **Metronome click** checkbox (default on).
+4. **Start play-along** / **Start practicing** (the label follows the style).
+
+The **run screen** (`#abc-playalong`, `src/play-along-view.ts`), top to bottom: a header row with the tempo text, the **beat dots** (one per beat of the bar, the current beat lit and pulsing, the downbeat bigger and ringed), the progress text ("Count-in", "Pickup", "Bar 3 of 16") and a **Stop** button; a small notice line (only when needed); the **cue** band (count-in number counting down, "Get ready..." before the first click, then a green "Play!" for 0.9 s; its height is always reserved so the score does not jump when the music starts); then the playing area, either the **sheet music** (Staff display) or the **big note name** with a "Next: ..." line (Letters display); the live "Hearing B♭4 (+8c from target)" line and the dwell bar; and, when the analysis stream has stalled, an amber **"No audio input -- press Start in the input bar above."** message. When the run ends (every note judged, or Stop) the playing area is replaced by the **results card**: the headline ("12 of 16 notes on time (75%)", plus "· 3 not reached" for an early stop), the tendency sentence when there is one ("You tend to play a little late (+45 ms on average)"), a scrolling list of the misses ("Bar 3, beat 2 · F♯4 -- late by 310 ms"), and **Play again** / **Practice missed notes** (only if any) / **Change settings**.
+
+The Letters/Staff toggle (`#note-display`) works for both styles.
+
+### How it is wired
+
+```
+Start click (user gesture)
+  -> AbcPracticeUi.start(): settings = { piece, tempoBpm, countInBeats, click }
+  -> await metronome.prepare()            (creates/resumes the AudioContext; 1.5 s timeout)
+  -> new PlayAlongRunner({ piece, tempoBpm, countInBeats, nowMs: Date.now,
+        click: metronome.click (only if prepared), config: { extraLatencyMs: outputLatencyMs } })
+  -> PlayAlongView.begin(runner, notice)   -> runner.start(); rAF loop paints runner.getView()
+
+each analysis hop (renderer.ts handleAnalysis, whichever tab is showing)
+  -> abcPracticeUi.handleAnalysisFrame(reading, rawReading, message.workletTimestampMs)
+  -> runner.handleFrame(...)               (scoring only; no DOM work on this path)
+```
+
+- **Tempo clamping, slider range and hint wording are core's** (`clampTempoBpm`, `describeTempoSettings` in `packages/core/src/play-along/tempo-settings.ts`, shared with mobile so the two apps say the same thing); this app only wires the controls.
+- **Tempo is UI state only.** `AbcPracticeUi.tempoBpm` is set from the piece's own tempo whenever the file, tune or transposition changes (`refresh()` -> `resetTempoFor`), adjusted by the controls, and handed to the runner. Nothing is written back (the file is not even kept after parsing). A typed value is followed as soon as it is valid but the field is not rewritten while typing (clearing it to type a new number must not snap back); it is clamped on blur/Enter and again when Start is pressed. When the field still shows the rounded written tempo, the runner gets the file's exact tempo (`effectiveTempo`), so a `Q:1/4=92.5` plays at 92.5, not 92. A mid-piece tempo change in the file is scaled by the same ratio (core).
+- **One clock, `Date.now()`.** The pitch frames are stamped by the worklet with `Date.now()` (see "Multichannel input and the worklet clock"), so `renderer.ts`'s `message.workletTimestampMs` is the scoring timestamp and `nowMs` is `Date.now`: the runner's display time, its click scheduling and the frame timestamps are all one domain. The runner draws the count-in and playhead from `nowMs`, not from frames, so they keep moving when the stream stalls -- and a stalled stream is made visible (`signalLost`) instead of silently marking every note missed. There is deliberately no automatic stop on lost signal: the player presses Stop (or starts the input and the overdue notes are judged from the first frame).
+- **Painting is independent of analysis.** `PlayAlongView` paints `runner.getView()` on every `requestAnimationFrame` while a run is active (the loop stops when the run ends or is discarded), and `handleAnalysisFrame` only forwards to the runner. If the run finishes from a frame (or Stop is pressed) the results are painted at once rather than waiting for the next animation frame, so a hidden/throttled window still ends cleanly.
+- **Nothing is rebuilt per frame.** The score is rebuilt only when the first bar changes, the window is resized, or the staff/letters setting changes; a note changing state is an attribute write on that note's SVG elements (only on frames where the runner's `noteStatesVersion` changed), and the playhead is one `transform` write per frame. Text is written only when it changed.
+- **Starting waits for audio.** `Metronome.prepare()` is awaited _before_ `runner.start()` (so the first click is not lost to the engine waking up). It never rejects and never takes longer than 1.5 s: in the in-app browser used for verification `AudioContext.resume()` can never settle, and the Start button must not hang on audio. On timeout/failure the run goes ahead with no click and a small note ("The metronome click is unavailable (no audio output) -- follow the beat dots."). The Start button is disabled while preparing (a second press is ignored).
+- **Play again** repeats the last run's exact settings (not whatever the controls say now). **Practice missed notes** ends the run and starts the Wait-for-me session over `notesAtIndices(piece, missedNoteIndices)`. **Change settings** reopens the panel. Starting anything while a run is active stops that run first.
+
+### The metronome (`src/audio/metronome.ts`)
+
+Short sine ticks (1000 Hz, 1500 Hz and louder on the downbeat, 40 ms, instant attack, exponential decay) through an `AudioContext` of its own, not the capture graph's (that one is analysis-only and muted; the click goes to the default output while the instrument comes in on the input interface, so there is no shared audio-session category to worry about on desktop). `ClickScheduler` (core) says _when_ each click is due in the frame clock, handing them over 150 ms ahead; `click(atMs, accent)` converts that to the audio clock with one fresh reading of both clocks per click (so drift cannot accumulate) and starts the oscillator exactly there. A click already more than 5 ms late is dropped rather than played late. `cancelPending()` (called when a run ends) stops the few already-scheduled ticks. `outputLatencyMs` (`baseLatency + outputLatency`, 0 where the browser does not know) is passed as the runner's `extraLatencyMs` so the scoring window shifts by the delay between a click being scheduled and being heard (0 when the click is off). Bluetooth headphones add far more than any browser reports; the way around is to turn the click off and follow the beat dots, or use wired output.
+
+### The score (`src/score-view.ts`)
+
+`ScoreView` draws one _window_ of core's score layout (`sizeScore` picks the size of a staff space and how many bars fit; `scoreLayoutToSvg` writes the markup, set as `innerHTML`: it is built from numbers and a fixed set of tag/attribute names only). It is full-bleed like the single-note staff (the container is set to the window's visible width and centered past the page's narrow column; height capped at `min(40% of the window, 380px)`).
+
+- **Play along**: the window starts at the bar being played (`barIndexAtWhole(piece, positionWhole)`; bar 0 during the count-in), so the notation is always "from here on", the eyes stay at the left edge and the playhead sweeps the first bar then the window moves on. At least **two bars** are kept on screen so the player can read ahead: when `sizeScore`'s natural size fits only one bar (a busy bar), the staff space is shrunk step by step through `sizeScore`'s own `maxUnitPx` (never below 12 px) until the next bar fits. The **playhead** is a line at `layout.xForWhole(positionWhole)` (dimmed and parked at the first note during the count-in). **Note colours** follow the runner's states: `due` blue, `hit` green, `missed` red, `pending` default ink (CSS `[data-state]` on every element of the note; beams, rests and bar lines carry no note index and keep the ink colour).
+- **Wait for me** with a piece: the window starts at the _target's_ bar; the target is blue, the notes before it in the window are green (done), later ones default. While drilling only the drilled target is highlighted (the window follows its bar); the target turns green during the "Nice!" pause. It redraws only when the target's bar changes or the window resizes, otherwise stepping to the next note is a recolour.
+
+### Wait for me: real notation and flat names (`PracticeSessionView`)
+
+`PracticeSessionView.begin(notes, piece?, { score? })` takes the ABC piece. With a piece: **Letters** use the sheet's spelling (`formatSpellingLabel(staffSpellingOf(note))`: "B♭4") for the target and the "Next:" line, and the "Hearing ..." line spells the heard pitch in the piece's key (`spellMidiInKey(rawReading.note.midi, piece.keyAtStart)`); **Staff** draws the score window described above (needs the optional `score` element; ABC has `#abc-score`). Playing Practice never passes a piece, so its "A#4"-style labels and its single-note staff are exactly what they were.
+
+### Judgment calls
+
+- **The window starts at the current bar and moves bar by bar** (as the brief said), rather than "turning the page" every few bars: the upcoming notes are always visible to the right and the eye does not have to chase the playhead across the screen, at the price of the window shifting at every bar line. The two-bar minimum above keeps the next bar readable. Worth checking against real playing; "turn the page" would be a small change in `PlayAlongView.renderScore`.
+- **"Practice missed notes" passes the piece with `{ score: false }`** (the brief said no piece): letters stay flat-aware ("B♭4", not "A#4") and the Hearing line stays in the key, but the plain single-note + lookahead staff is used, since a score of bars the player is skipping would mislead. That session's notes are `notesAtIndices(...)` and are practiced one at a time with their neighbours _in that list_ (core's note).
+- **The results replace the playing area** (the card shows instead of the score) rather than sitting under a frozen last window: the misses list tells the whole story, and a coloured last bar alone would suggest it is a summary.
+- **No automatic stop when the signal is lost** (see above). **No Drilling**, by the decision with the user.
+- **The count-in number counts clicks left** (4, 3, 2, 1: core's `countInRemaining`) while the dots show the beat in the bar (1, 2, 3, 4), so on a four-click count-in they read opposite; both are meaningful and the dots still show where the downbeat is.
+- **The beat dots are built from the opening meter** (`piece.meter.beatsPerBar`) and grown (never shrunk) if a later meter change has more beats.
+- **A bug fixed along the way** (pre-existing): `.pp-field { display: flex }` beat the `hidden` attribute, so the ABC panel's Tune picker was always shown, empty or for a single-tune file; `.pp-field[hidden]` now wins. Several new blocks that set their own `display` get the same treatment (`.pa-session [hidden]`).
+
+### Known quirks (core-side, not changed here)
+
+- The live **"Hearing X (+Nc from target)"** line picks its target as whichever note's onset is nearer to _now_, ignoring the detection lag (~60 ms plus output latency) the scorer itself allows for. A player who is exactly on time therefore sees a spurious "+200c from target" (a semitone or two) for the second half of each note and the first ~60 ms of the next, most visibly in fast passages. It is the runner's `liveFeedbackText`; shifting the "nearer onset" test by the same lag would fix it.
+- Two consecutive notes of the _same_ pitch can both be credited by one sounding when their windows overlap (documented in core's `PlayAlongSession`); the end-of-run timing tendency can then look odd (e.g. "a little early" for a player who is consistently late).
+
+### Verification specific to this feature
+
+- `npx tsc --noEmit` (main and worklet projects), `npx eslint apps/desktop/src`, `npx prettier --check apps/desktop` clean. No unit tests here (this app has no test runner, by decision); the logic worth testing (plan, scoring, wording, count-in, layout) is in core and tested there.
+- **Driven in a real browser DOM** (Vite serving the real `index.html` markup and the real source from a scratch config, since deleted; a temporary harness mounted the real element bindings and fed `AbcPracticeUi.handleAnalysisFrame` frames at the real ~11.6 ms hop from a simulated player that reads the runner's own plan, in real time with `Date.now()`; files imported through the real `<input type="file">`): tempo controls (-/+, typing mid-edit, clamping on commit, slider, reset button, percentage hint, unit symbol, slider range, "no tempo marking"/"assuming 4/4" hints on a file with neither); a perfect run on `ode-to-joy.abc` (62 of 62, "No missed notes"), `happy-birthday.abc` (3/4 with a pickup: count-in "2, 1, Play!" before the pickup, 3 beat dots) and `fur-elise.abc` (3/8 with a pickup, `♪ = 120`, 3 dots); a late + wrong-pitch + skipped run (misses listed with correct "late by N ms"/"played the wrong note"/"not played"/"started early" text, scrolling list, tendency line); Stop mid-run ("... · 29 not reached", "No missed notes before you stopped."); Play again; Practice missed notes (Wait-for-me over the missed subset: flat-aware letters, plain staff); count-in One bar/Two bars/None; the "No audio input" message with no frames; a stubbed audio context whose `resume()` never settles (run starts after ~1.5 s with the notice, button disabled meanwhile); the staff window following the bar with the playhead moving and notes turning blue -> green; key signatures and accidentals on `keys/f-major`, `keys/eb-major`, `keys/chromatic`, `keys/a-minor-harmonic`; Wait for me on `keys/f-major-scale.abc` and `keys/a-minor-harmonic-scale.abc` (score window at the target's bar, done notes green, "B♭4"/"G♯4" letters, Drilling following the drilled note's bar with "Hearing B♭5 (+300c from target)"); the Playing Practice tab unchanged ("F#4" labels, single-note staff); resizing mid-run 1024 <-> 1300 (the score redraws at the new width, no horizontal scroll); switching tabs mid-run (the run continues).
+- **Not verified:** the packaged Electron app (all of the above ran in the in-app browser); the **click actually being audible** and its timing (in the in-app browser the audio context resumed in most runs, but nothing can be heard there, and in earlier sessions `resume()` never settled there at all) -- including `outputLatency` values on real hardware and whether `extraLatencyMs` is the right correction; **real violin input** -- the 60 ms detection lag and the timing tolerances are core's rough constants to be tuned against a real instrument (see core's `DEFAULT_PLAY_ALONG_DETECTION_LAG_MS`); whether a hidden/minimized Electron window throttles the 25 ms click-scheduling timer enough to make clicks stutter (Electron's `backgroundThrottling` is left at its default); Windows.
+
+## Drilling as an option
+
+A **Drill missed notes** checkbox (`#drilling-checkbox`, default on, not persisted) sits in the note-display bar, shared by Playing Practice and ABC Wait for me (the play-along never drills). With it off, `PracticeSessionView.applyResult` turns a failed attempt (timeout or "Having trouble?") into an immediate `skipDrill()`, shows the neutral "Moving on" banner and carries on with the next note (the sequence completes if it was the last); `packages/core` is untouched. Changing it mid-drill lets the current drill finish; it applies from the next miss.
+
+## ABC finger numbers (added after the Csardas example)
+
+A **Show finger numbers** checkbox (`#fingers-checkbox`, in the note-display bar, shown on the ABC tab only, default on, not persisted) applies to both styles and **takes effect at once, mid-session included** (`AbcPracticeUi.setFingersEnabled` -> `PracticeSessionView.setFingersEnabled` / `PlayAlongView.setFingersEnabled`; the attempt in progress is untouched). When on: the score draws a digit over each note (`ScoreView.setFingers`, grey for a suggestion, black for a number the file wrote; the note's state colour wins), and the Letters display shows a line under the big note name (`#abc-finger` in Wait for me, `#pa-finger` in the play-along; "Finger 2" / "Open string", grey italic for a suggestion). The line is hidden while the score is showing, since the digits are on it. The numbers, the first-position suggestion and their limits are `packages/core`'s (see its "Finger numbers"). Wired through `PracticeSessionView.begin(..., { fingers })` and `PlayAlongView.begin(..., { fingers })`. **Verified** in a browser DOM (import, both styles, Letters and Staff, off). **Not verified:** the packaged app, and whether the suggestions match what a teacher would write for a given piece.
 
 ## DSP binding decision: TypeScript port, not WASM or a Node addon
 

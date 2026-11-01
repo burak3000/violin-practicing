@@ -347,3 +347,62 @@ describe('parseAbc: voices', () => {
     expect(tune.voices[0]!.id).toBe('');
   });
 });
+
+describe('parseAbc: written spellings (for drawing the notes on a staff)', () => {
+  function spellings(body: string, key = 'C') {
+    return parseAbc(`X:1\nK:${key}\n${body}\n`).tunes[0]!.voices[0]!.spellings;
+  }
+
+  it('keeps flats as flats and sharps as sharps, parallel to the MIDI notes', () => {
+    const tune = parseAbc('X:1\nK:Bb\nB E A\n').tunes[0]!;
+    expect(tune.voices[0]!.spellings).toEqual([
+      { letter: 'B', accidental: -1, octave: 4 },
+      { letter: 'E', accidental: -1, octave: 4 },
+      { letter: 'A', accidental: 0, octave: 4 },
+    ]);
+    expect(tune.voices[0]!.spellings).toHaveLength(tune.voices[0]!.notes.length);
+  });
+
+  it('reads accidentals, octave marks and case into the spelling', () => {
+    expect(spellings("^F _B =c C, c'")).toEqual([
+      { letter: 'F', accidental: 1, octave: 4 },
+      { letter: 'B', accidental: -1, octave: 4 },
+      { letter: 'C', accidental: 0, octave: 5 },
+      { letter: 'C', accidental: 0, octave: 3 },
+      { letter: 'C', accidental: 0, octave: 6 },
+    ]);
+  });
+
+  it('applies the key signature and double accidentals to the spelling', () => {
+    expect(spellings('F ^^C __B', 'D')).toEqual([
+      { letter: 'F', accidental: 1, octave: 4 },
+      { letter: 'C', accidental: 2, octave: 4 },
+      { letter: 'B', accidental: -2, octave: 4 },
+    ]);
+  });
+
+  it('keeps one spelling per played note across ties, rests and chords', () => {
+    const tune = parseAbc('X:1\nK:C\n_B- B z [CEG] D\n').tunes[0]!;
+    const voice = tune.voices[0]!;
+    expect(voice.notes).toEqual([70, 67, 62]);
+    expect(voice.spellings).toEqual([
+      { letter: 'B', accidental: -1, octave: 4 },
+      { letter: 'G', accidental: 0, octave: 4 },
+      { letter: 'D', accidental: 0, octave: 4 },
+    ]);
+  });
+
+  it('keeps spellings separate per voice', () => {
+    const tune = parseAbc('X:1\nK:C\n[V:1] _B |\n[V:2] ^F |\n').tunes[0]!;
+    expect(tune.voices.find((v) => v.id === '1')!.spellings[0]).toEqual({
+      letter: 'B',
+      accidental: -1,
+      octave: 4,
+    });
+    expect(tune.voices.find((v) => v.id === '2')!.spellings[0]).toEqual({
+      letter: 'F',
+      accidental: 1,
+      octave: 4,
+    });
+  });
+});

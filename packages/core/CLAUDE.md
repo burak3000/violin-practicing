@@ -46,7 +46,7 @@ platform-integration phase — this is that phase, and per the plan's Hard
 Rule 3 the policy is decided and documented in that module rather than
 guessed independently per platform.
 
-**13 test files, 301 tests, all passing** (`pnpm --filter @violin/core test`; 197 / 11 files through Phase 8, +104 for ABC notation practice -- see "ABC notation" below).
+**29 test files, 901 tests, all passing** (`pnpm --filter @violin/core test`; 197 / 11 files through Phase 8, +179 for ABC notation practice and the staff display -- see "ABC notation" and "Staff notation" -- and +503 for ABC rhythm, tempo, the timed play-along and the rhythmic score notation: see "ABC rhythm, meter and tempo", "Timed play-along" and "Score notation").
 
 Two correctness fixes made during Phase 2 verification, worth knowing about:
 
@@ -123,13 +123,50 @@ src/
   abc/
     abc-parser.ts                  parseAbc() -- ABC notation text -> per-tune,
                                     per-voice MIDI pitch lists (key signatures,
-                                    accidentals, ties, voices; see "ABC notation").
+                                    accidentals, ties, voices) AND rhythm: note
+                                    lengths, rests, bars, meter, tempo, tuplets,
+                                    beaming (see "ABC notation" and "ABC rhythm,
+                                    meter and tempo").
     abc-parser.test.ts             77 tests (hand-derived expectations).
+    abc-rhythm.test.ts             66 tests for the rhythm half of the parser and
+                                    for the AbcPiece buildAbcPracticeSequence returns.
+    abc-score.ts                   The score data contract (AbcScoreElement, AbcPiece,
+                                    AbcMeter, AbcTempoMark, KeyOffsets) shared by the
+                                    parser, the play-along engine and the notation
+                                    layout; positions/durations in whole notes.
     abc-practice.ts                buildAbcPracticeSequence() -- a parsed tune ->
-                                    SequenceNote[] with range checking +
+                                    SequenceNote[] + AbcPiece with range checking +
                                     transposition; abcTuneLabel/abcPracticeSummary
                                     shared UI text.
     abc-practice.test.ts
+  play-along/
+    play-along-plan.ts             buildPlayAlongPlan(): tempo + piece -> note onsets in
+                                    ms, the metronome beat grid, count-in (see "Timed
+                                    play-along").
+    play-along-session.ts          PlayAlongSession: scores frames against the plan
+                                    (in tune AND on time), per-note hit/miss + reason.
+    play-along-summary.ts          Run summary + the wording both apps show.
+    play-along-runner.ts           PlayAlongRunner: one whole run, headless -- clock,
+                                    click scheduling, render-ready view, results text.
+    click-scheduler.ts             Look-ahead scheduler for the audible click.
+    count-in.ts                    countInBeatsForBars(): "N bars" -> clicks (pickups).
+    test-support/                  Test-only piece builder + synthetic detector frames.
+  notation/
+    note-spelling.ts               NoteSpelling (letter + accidental + octave):
+                                    how a note is *written*, so B-flat stays
+                                    B-flat. spellMidi/transposeSpelling/etc.
+    staff-glyphs.ts                GENERATED: Bravura glyph outlines (clef,
+                                    accidentals, notehead) as SVG paths in
+                                    staff-space units. Don't edit by hand.
+    score-layout.ts                layoutScore()/sizeScore() -- the rhythmic score layout
+                                    for ABC pieces: a flat draw list + playhead mapping
+                                    (see "Score notation").
+    score-accidentals.ts           Printed-music accidental rules + key signature signs.
+    score-svg.ts                   scoreLayoutToSvg() -- SVG markup of a layout.
+    staff-layout.ts                layoutStaff() -- pure treble-staff geometry
+                                    (lines, ledger lines, heads, stems,
+                                    accidentals) that both apps draw.
+    *.test.ts                      note-spelling 15, staff-layout 31 tests.
   persistence/
     ports.ts                       SessionStore<T> / ProgressRepository
                                     interfaces (v1 persistence decision).
@@ -560,6 +597,268 @@ reliably produces a detectable release is **not verified** -- if it doesn't, a
 repeated note will time out into Drilling, which the manual skip buttons can
 always escape.
 
+## ABC rhythm, meter and tempo (`abc/abc-score.ts`, the parser's second half)
+
+The parser used to throw note lengths away ("nothing scores rhythm"). The timed
+play-along changed that, so `parseAbc` now returns, per voice, a **score**
+(`AbcVoice.score: AbcVoiceScore`) next to the pitch lists, and per tune the
+header `meter`, `tempo` and `unitNoteLength`. The contract is
+`abc/abc-score.ts`; read it before touching the parser, the play-along
+engine or the notation layout.
+
+- **Time is in whole notes** (quarter = 0.25, triplet eighth = 1/12), plain floats
+  compared with `WHOLE_EPSILON`. `AbcScoreElement` is a time-ordered list:
+  `note` (points back into `notes` by `noteIndex`; `start`, `duration`,
+  `notated` = the written length before tuplet scaling, `beamedToPrevious`,
+  `tuplet`, `bar`), `rest` (visible or `x`-invisible), `bar` (style, `after` = the
+  bar it closes), and `key` / `meter` / `tempo` changes (the header values are
+  emitted at position 0). Ties are summed into one note to play.
+- **What it reads**: `L:` (header, inline `[L:]`, body line; ABC's default from the
+  meter when absent), note lengths (`2 /2 3/2 / // 3/ /3`), broken rhythm
+  (`> >> >>> < << <<<`, applied to rests too, and to the _last part_ of a tied
+  note only), tuplets (`(3`, `(p:q:r`, ABC's default q incl. compound time),
+  rests (`z x`, multi-bar `Z`/`X` expanded into one rest per bar with bar lines
+  between, `y` = no time), chords (first note's length times the length after
+  the bracket, as abcjs), grace notes (no time), `M:` (`4/4 C C| (2+3+2)/8
+none`), `Q:` (`1/4=120`, text before/after, `ca.`, several lengths summed, old
+  `C=120`, bare number = meter's 1/denominator note as abcjs does), mid-tune
+  changes of all of these. Bar lines are classified (`single double final
+repeat-start repeat-end repeat-both`); consecutive ones merge; leading and doubled
+  ones never create empty bars; repeats and voltas are still **not expanded**.
+- **Bars and pickup**: bars are numbered from 0; a first bar shorter than the
+  meter is a pickup (`pickupWhole`), so the first full bar is bar 1. The parser
+  warns about interior bars that do not add up to the meter (not next to
+  repeat/double/final lines, not with a meter change, not without an `M:`) --
+  usually a wrong note length or `L:`, which would misplace every note in the
+  timed mode.
+- **Beaming** follows the writer: a note with no space before it is
+  `beamedToPrevious` (decorations, chord symbols, slurs do not break it; a space,
+  bar line or line end does).
+- `KeyElement.fifths` records the key signature's place on the circle of fifths
+  for standard keys (`undefined` for `exp` / extra-accidental keys).
+- **`buildAbcPracticeSequence(...).piece: AbcPiece`** pairs the practice notes with
+  that score: `meter` (4/4 and `meterAssumed` when the file has none), `tempo` (the
+  file's, or `defaultTempoMark`: 80 quarter notes per minute expressed in the
+  meter's own beat, `tempoSource: 'default'`), `pickupWhole`, `barStartsWhole`,
+  `keyAtStart`. A whole-octave transposition keeps the key signature; any other
+  shift drops it (every altered note then carries its own sign).
+- **Flat-aware labels**: `formatSpellingLabel` ("B♭4", "F♯5") and
+  `spellMidiInKey(midi, keyOffsets)` (how a piece in this key writes a heard pitch)
+  live in `notation/note-spelling.ts`; `abcPracticeSummary` and the range labels
+  (`lowestLabel` / `highestLabel`) use them, so a B-flat is never shown as A#.
+
+**Validation.** Beyond the 66 hand-derived tests, the rhythm was cross-checked
+against `abcjs` (scratch directory, not a dependency): ~12,000 random tunes
+mixing every feature above across 11 meters, three unit lengths and several
+keys produced identical (pitch, start, duration) for every note, and all 25 example
+files in `abc-music/` match too (the script compares each file's first tune; the six tunes of
+`monti-czardas.abc` were split into one file each and match once their `|:`/`:|` signs are turned into
+plain bar lines, because abcjs's MIDI expands repeats and this parser plays them once). The _intentional_
+differences from abcjs: a rest
+longer than a bar (abcjs clamps it to one bar; the standard says the literal
+length), `(7` in compound time (abcjs uses 2, the standard 3), tuplets of mixed
+note lengths (abcjs derives the group length from the first note; we multiply each
+note by q/p), broken rhythm directly after a tuplet, grace notes (abcjs plays them
+in time; we skip them), and chords (abcjs sounds every note; we keep the top).
+Differential bugs this found and fixed: broken rhythm after a tie dotted the whole
+tie instead of its last part.
+
+## Timed play-along (`play-along/`)
+
+The timed mode of ABC practice: a metronome keeps a tempo, the piece advances on
+the beat, and every note must be played in tune **and** on time; missed notes are
+listed at the end (no Drilling -- the clock cannot stop). The user chose this over
+a metronome-only mode; the untimed "Wait for me" flow remains as an option.
+
+- **`buildPlayAlongPlan(piece, {tempoBpm, countInBeats})`** is the tempo-aware
+  timeline: `notes` (onset/end in ms, bar number, beat in bar, beat length), the
+  metronome `beats` (count-in first; accents on beat 1; grid origin = the first
+  full bar's downbeat, so a pickup piece clicks on the pickup note), `countInMs`,
+  `totalMs`, and `msAtWhole` / `wholeAtMs` through tempo changes. `tempoBpm` is
+  in the _piece's own beat unit_ (♩, ♩., ♪ ...) and scales every tempo mark by the
+  same ratio -- the UI edits one number; the file is never touched.
+- **`PlayAlongSession`** scores frames (`update(reading, timestampMs)`) against a
+  plan. Read its module comment: the rules (strict-continuity runs like
+  `TargetNoteDwellTracker`, a run's _start_ must be within `tol` of the beat after
+  removing `detectionLagMs` + output latency, hits resolve immediately, early /
+  late / wrong-pitch / not-played reasons, same-pitch leniency because bow changes
+  are not reliably detectable) and the constants with their reasoning:
+  tolerance = 0.4 of a beat clamped to 100-250 ms, dwell = 0.6 of the note clamped
+  to 40-150 ms, **detection lag 60 ms (a reasoned estimate, not a measurement --
+  tune it against the real instrument)**. Known limits are in the comment
+  (lateness is only diagnosed up to tol + dwell after the beat; one sounding can
+  credit two consecutive same-pitch notes on fast passages).
+- **`PlayAlongRunner`** is one whole run with no platform in it: it picks
+  `zeroMs = now + lead + countIn`, starts the **`ClickScheduler`** (look-ahead
+  scheduling, so a jittery main thread never makes the click uneven; the platform
+  only turns `atMs` into an audio time), forwards frames to the session, and
+  `getView()` returns a render-ready `PlayAlongRunView` (count-in number, beat,
+  tempo text, "Bar 3 of 16", a per-note state array whose identity changes only
+  when a state does, flat-aware "Hearing B♭4 (+8c from target)", `signalLost` when
+  no frame has arrived for 1.5 s, and the end-of-run summary). **Display time comes
+  from the platform clock, scoring time from the frames' timestamps** (both in the
+  same domain: epoch ms on desktop, `performance.now()` on mobile), so the
+  count-in and playhead keep moving if the analysis stream stalls while nothing is
+  silently scored as missed. `notesAtIndices` builds the "practice the missed
+  notes" list; `countInBeatsForBars(piece, bars)` turns "one bar" into a click
+  count (a pickup takes its own beats off so the player counts "1 2 3" and comes in
+  on 4).
+- **Tests**: plan 44, session 60 (a perfect player, late/early/wrong/silent
+  players, short notes, repeated pitch, resets, overlap, frame ordering...; the
+  session was also checked with 17 deliberate mutations, all caught), summary 27,
+  runner 22, click scheduler 9, count-in 6.
+
+## Staff notation (`notation/`) -- the "Staff" display for target notes
+
+Both practice modes can show the target note on a treble-clef staff instead of
+as a letter name (and ABC practice also previews the notes that follow, as many as fit).
+This package owns everything platform-independent about that; each app only
+draws the result.
+
+- **`NoteSpelling`** (`{ letter, accidental, octave }`) is how a note is
+  _written_. `NoteName` only has a sharps-only label ("A#4") and cannot tell
+  B-flat from A-sharp -- which sit on different staff lines. The ABC parser
+  keeps the written spelling (`AbcVoice.spellings`, parallel to `notes`),
+  `buildAbcPracticeSequence` carries it onto `SequenceNote.spelling` (a whole-
+  octave transposition keeps letter and accidental; any other shift re-spells
+  with sharps), and `staffSpellingOf(note)` returns it or, for generated notes
+  (which only come from sharp keys), the sharps-only spelling of the MIDI
+  number. **Letter-name labels are unchanged** -- they still read "A#4" for a
+  B-flat, a known inconsistency between the two displays on flat tunes.
+- **`layoutStaff(notes)`** returns pure geometry in _staff spaces_ (one space =
+  the gap between two lines; top line y=0, bottom y=4, y down): line positions,
+  the clef, and for each note its head, stem (up below the middle line, always
+  long enough to reach it), ledger lines, and accidental. No key signature is
+  drawn: every sharp/flat/double accidental is written on its own note, which is
+  unambiguous for a one-note-at-a-time display; naturals carry no sign. Every
+  note is a filled quarter-style head (rhythm isn't scored). The vertical extent
+  is fixed to cover everything from the open G up to the detector's G6 ceiling
+  (tested across all of it), so the staff never changes height as the target
+  moves; only a note beyond that extends it.
+- **Full width.** `layoutStaff(notes, { minWidth })` makes the staff at least
+  that wide (in staff spaces): the lines run the full width and the notes
+  spread out (spacing capped at 8 spaces, so a short piece doesn't scatter)
+  and are centered after the clef -- a single note sits in the middle. It
+  never squeezes below the notes' natural width. **`sizeStaff(notes,
+availableWidthPx, { maxHeightPx })`** is the shared sizing step both apps
+  use to fill the screen edge to edge: it picks the pixel size of one staff
+  space (aimed at ~30 spaces across, clamped to 8-40px, never taller than
+  `maxHeightPx`) and, if the notes can't fit the width even so, shrinks the
+  whole staff instead of overflowing.
+- **Lookahead.** With `sizeStaff(..., { lookahead: true })` (ABC practice) the
+  notes after the first are a _preview_: it draws the longest run that fits the
+  width at natural spacing (never fewer than the target), left-aligned
+  (`layoutStaff`'s `align: 'start'`) so the **target stays in the same place as
+  the piece advances**, and exposes how many fit via `layout.notes.length`. A
+  window fits a dozen or more, a phone about eight; the apps hand it up to 40
+  notes to choose from. (The letter-mode "Next:" text line still names four.)
+- **`staff-glyphs.ts`** is _generated_ from the Bravura music font (SMuFL
+  reference font, SIL Open Font License 1.1; attribution in the file): outlines
+  of the G clef, sharp, flat, natural, double sharp, double flat and notehead,
+  divided into staff-space units. Embedding outlines (instead of using a music
+  font or Unicode music symbols) makes the staff identical on every platform
+  with nothing to install -- React Native cannot count on a music font at all.
+  If a glyph needs changing, regenerate it from the font rather than editing
+  paths by hand.
+
+A small fix made along the way: key signatures with flats produced `-0` for
+unaltered letters (`-Math.floor(0)`); harmless for pitch math but it leaked into
+the spelling data, so it is now `0 - Math.floor(...)`.
+
+## Score notation (`notation/score-*.ts`) -- real notation for ABC practice
+
+The single-note staff above (`layoutStaff`) stays for Playing Practice: one note,
+a sign on every altered note, no key signature. ABC practice shows a _piece_, so
+it uses a second, richer layout built from the score contract in `abc/abc-score.ts`:
+key signature, time signature, note values, rests, bar lines, beams, ties,
+tuplets, and accidentals printed only where the key does not already imply them.
+Same conventions (staff-space units, y down, top line 0), same embedded Bravura
+outlines, no music font anywhere.
+
+- **`layoutScore(piece, {firstBar, widthSpaces, showTimeSignature?, maxBars?, justify?})`**
+  lays out as many consecutive bars from `firstBar` as fit `widthSpaces` (at least
+  one; `overflow` says if even one did not) and returns `ScoreLayout`: a `viewBox`,
+  the per-note positions (`notes`), `barLines`, `xForWhole(whole)` (the playhead
+  mapping, piecewise linear and clamped to the window) and **`primitives`, a flat
+  draw list** (`line` / `glyph` / `polygon` / `path` / `circle`, each tagged with a
+  `part` and, where it belongs to a practice note, its `noteIndex`). Both apps
+  draw that list and nothing else (SVG on desktop, `react-native-svg` on mobile),
+  so geometry is decided and tested once. `sizeScore` picks the pixel size of a
+  staff space from the available width and height (shrinking if one bar needs more
+  room). `barIndexAtWhole` maps a playhead position to a bar. `scoreLayoutToSvg`
+  turns a layout into SVG markup (numbers and fixed tags only; `data-note` on
+  note parts so a UI can recolour a note without rebuilding the drawing).
+- **Accidentals** (`score-accidentals.ts`, `computeDisplayAccidentals`): the key
+  signature in force gives each letter's default; an accidental holds for the rest
+  of its bar for that letter _and octave_; a note whose real pitch equals what is
+  in force draws nothing, otherwise it draws its sign (a natural where the key
+  sharpened or flattened it). No courtesy accidentals. A tie continuation never
+  repeats a sign. Mid-tune key changes get cancelling naturals. Key signatures with
+  a double accidental on a letter cannot be printed, so notes on that letter carry
+  their own signs. `keySignatureGlyphs` gives the signs in the standard order and
+  treble-clef positions.
+- **Notation details**: values from `notated` (a triplet eighth is drawn as an
+  eighth inside a tuplet mark), split into tied pieces when not a single value or
+  when crossing a bar line (greedy, double-dotted allowed); beams join notes the
+  writer beamed (no space) within a bar with no rest between, with sloped
+  beams capped at 1/4, secondary beams and stubs, one stem direction per group;
+  tuplet numbers (bracket when not beamed); ties curve opposite the stem; rest
+  glyphs per value, whole-bar rests centred; bar lines in all six styles; a
+  rest-only or invisible-rest bar still takes room. Windows are justified (bars
+  stretched up to 1.3x so the window fills the width exactly; not the last window
+  of a piece). **No time signature is printed when `piece.meterAssumed`** (printing
+  an assumed 4/4 would invent notation); a real meter change later is still drawn.
+- **Glyphs**: `staff-glyphs.ts` now holds 44 glyphs (note heads, flags, rests, time
+  signature digits and C / cut-C, augmentation dot, tuplet digits besides the
+  original clef / accidentals / head). It is **generated**, not edited:
+  `scripts/generate-staff-glyphs.mjs --font Bravura.otf --metadata Bravura.json --out
+src/notation/staff-glyphs.ts [--opentype <opentype.js module>]` (the font, its
+  SMuFL metadata and `opentype.js` are inputs, not dependencies; a test pins the
+  original seven glyphs byte for byte). `SMUFL_ANCHORS` / `SMUFL_ENGRAVING` expose the
+  stem/flag anchors and engraving defaults the layout uses.
+- **Known imperfections** (left as they are): beams over very large leaps get long
+  stems (cost of the slope cap), whole notes sit left-aligned in their bar, the
+  tuplet digits are Bravura's italic ones and look a little large, and the default
+  view-box height is fixed so there is empty space above and below the staff
+  (it grows only for extreme notes).
+- **Tests**: layout 181, accidentals 31, SVG 15, glyphs 9, including a test that
+  lays out every tune of every file in `abc-music/` at every bar (not only the first tune: `monti-czardas.abc` holds six). Verified by eye in a browser
+  across all 15 key signatures, the time signatures, every note value and rest,
+  beam shapes, tuplets, ties, ledger lines, bar lines and real tunes.
+
+## Finger numbers (`notation/fingering.ts`, parser `!1!`..`!4!`)
+
+ABC practice can show which violin finger plays each note (0 = open string, 1-4),
+as a small digit over the note on the score and as a line ("Finger 2", "Open
+string") under the letter name. The user asked for numbers from **both** sources:
+
+- **From the file**: the parser reads the standard fingering decorations `!0!`-`!4!`
+  (and the old `+1+` style) before a note into `AbcVoice.fingers`, parallel to
+  `notes` (`undefined` where none). Other digits (`!5!`) are ignored; a decoration
+  before a rest belongs to the rest; a tied note keeps the first part's number; in a
+  chord a member's number goes with the top note (an outer `!2![CE]` is used when
+  the member has none). `buildAbcPracticeSequence` carries it on `SequenceNote.finger`
+  -- **only when `transposeSemitones` is 0**: after a shift the notes sit on other
+  strings, so the file's numbers no longer apply and suggestions are used.
+- **Suggested** (`suggestFinger(midi)`): first position only. The open string at that
+  pitch is 0; otherwise the _highest_ string the note is within seven semitones above,
+  with 1-2 semitones -> finger 1, 3-4 -> 2, 5-6 -> 3, 7 -> 4 (so D5 is 3 on the A
+  string). Above the fourth finger on the E string (about C6 up) there is **no
+  suggestion**: that needs a higher position, which depends on the passage, so
+  nothing is guessed. It does not know shifts, extensions, or keys' low/high finger
+  placements -- it is a starting point, not a teacher.
+
+`fingerMarkFor(note)` picks the file's number first and says where it came from
+(`FingerMark.source: 'file' | 'suggested'`); `fingerMarksOf(notes)` does it for a
+whole piece; `describeFinger` gives the words. `layoutScore`/`sizeScore` take
+`fingers` (marks indexed by practice note) and draw one digit per note (the italic
+tuplet digit glyphs) above the staff, the head and any stem/beam, centred on the
+head, with part `finger` or `finger-suggested` and the note's `noteIndex` (so it
+takes the note's state colour); it needs no horizontal room, so spacing and
+`widthSpaces` are identical with or without. `PlayAlongRunView.targetNoteIndex` (new)
+says which note `targetLabel` names, so the Letters display can show its finger.
+Tests: `notation/fingering.test.ts` (22).
+
 ## Persistence (`persistence/ports.ts`, `persistence/in-memory.ts`)
 
 Confirmed v1 decision (plan's "Confirmed architectural decisions" #2): **no
@@ -604,7 +903,7 @@ in-session features (e.g. a running streak) work correctly.
 
 From the repo root:
 
-- `pnpm --filter @violin/core test` — run the full Vitest suite once (`vitest run`). Currently **13 test files, 301 tests**, all passing.
+- `pnpm --filter @violin/core test` — run the full Vitest suite once (`vitest run`). Currently **29 test files, 901 tests**, all passing.
 - `pnpm --filter @violin/core test:watch` — Vitest watch mode.
 - `pnpm --filter @violin/core typecheck` — `tsc --noEmit`.
 - `pnpm test` / `pnpm typecheck` / `pnpm lint` from the repo root also cover this package (via `pnpm -r --if-present`) alongside every other workspace package.

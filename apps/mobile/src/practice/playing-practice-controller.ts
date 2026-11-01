@@ -136,6 +136,11 @@ export class PlayingPracticeController {
 
   private readonly runner = new PracticeSessionRunner({ onChange: () => this.emit() });
 
+  /** Drilling on/off (default on); off = a missed note moves straight on. Applies from the next miss. */
+  setDrillingEnabled(enabled: boolean): void {
+    this.runner.setDrillingEnabled(enabled);
+  }
+
   constructor(private readonly events: PlayingPracticeControllerEvents = {}) {}
 
   /**

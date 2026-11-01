@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parseAbc } from './abc-parser.js';
 import { abcPracticeSummary, abcTuneLabel, buildAbcPracticeSequence } from './abc-practice.js';
 import { PracticeSessionController } from '../practice/practice-session-controller.js';
+import { staffSpellingOf } from '../sequence/sequence-generator.js';
+import { generatePlayingPracticeSequence } from '../sequence/sequence-generator.js';
 
 function tuneOf(body: string, key = 'C') {
   return parseAbc(`X:1\nT:Test\nK:${key}\n${body}\n`).tunes[0]!;
@@ -98,8 +100,8 @@ describe('buildAbcPracticeSequence: range handling refuses rather than drops', (
     expect(result.message).toContain('up an octave');
   });
 
-  it('rejects a tune above the detector ceiling (C7 = 2093Hz) and suggests going down', () => {
-    const result = buildAbcPracticeSequence(tuneOf("c'' d''"));
+  it('rejects a tune above the detector ceiling (C8 = 4186Hz) and suggests going down', () => {
+    const result = buildAbcPracticeSequence(tuneOf("c''' d'''"));
     expect(result.status).toBe('out-of-range');
     if (result.status !== 'out-of-range') return;
     expect(result.suggestedTransposeSemitones).toBe(-12);
@@ -163,5 +165,39 @@ describe('abcTuneLabel / abcPracticeSummary', () => {
   it('is just the heading when the tune cannot be practiced', () => {
     const tune = tuneOf('C,');
     expect(abcPracticeSummary(tune, buildAbcPracticeSequence(tune))).toBe('Test \u00b7 key C');
+  });
+});
+
+describe('buildAbcPracticeSequence: written spelling is carried to the notes', () => {
+  it('keeps B-flat as B-flat even though the note label is sharps-only', () => {
+    const result = buildAbcPracticeSequence(tuneOf('B', 'Bb'));
+    if (result.status !== 'ok') throw new Error('expected ok');
+    expect(result.notes[0]!.note.label).toBe('A#4');
+    expect(result.notes[0]!.spelling).toEqual({ letter: 'B', accidental: -1, octave: 4 });
+    expect(staffSpellingOf(result.notes[0]!)).toEqual({ letter: 'B', accidental: -1, octave: 4 });
+  });
+
+  it('keeps the spelling when transposed by whole octaves, moving only the octave', () => {
+    const result = buildAbcPracticeSequence(tuneOf('B', 'Bb'), { transposeSemitones: 12 });
+    if (result.status !== 'ok') throw new Error('expected ok');
+    expect(result.notes[0]!.spelling).toEqual({ letter: 'B', accidental: -1, octave: 5 });
+  });
+
+  it('re-spells with sharps for a transposition that is not whole octaves', () => {
+    const result = buildAbcPracticeSequence(tuneOf('B', 'Bb'), { transposeSemitones: 1 });
+    if (result.status !== 'ok') throw new Error('expected ok');
+    expect(result.notes[0]!.spelling).toEqual({ letter: 'B', accidental: 0, octave: 4 });
+  });
+});
+
+describe('staffSpellingOf', () => {
+  it('spells generated notes (which carry no written spelling) from their MIDI number, sharps only', () => {
+    const [d4, e4, fSharp4] = generatePlayingPracticeSequence({
+      strings: ['D'],
+      patternType: 'stepwise-first-position',
+    });
+    expect(staffSpellingOf(d4!)).toEqual({ letter: 'D', accidental: 0, octave: 4 });
+    expect(staffSpellingOf(e4!)).toEqual({ letter: 'E', accidental: 0, octave: 4 });
+    expect(staffSpellingOf(fSharp4!)).toEqual({ letter: 'F', accidental: 1, octave: 4 });
   });
 });

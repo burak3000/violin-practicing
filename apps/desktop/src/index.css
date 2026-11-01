@@ -349,6 +349,12 @@ button:disabled {
   color: #666;
 }
 
+/* `.pp-field` sets `display: flex`, which would otherwise beat the `hidden`
+   attribute (the ABC panel hides its Tune picker for a single-tune file). */
+.pp-field[hidden] {
+  display: none;
+}
+
 .pp-field select,
 .pp-field input {
   font: inherit;
@@ -524,4 +530,404 @@ button:disabled {
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.85rem;
   color: #999;
+}
+
+/* --- Letters / staff toggle + staff rendering ----------------------------- */
+
+.note-display {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-block-end: 0.75rem;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+/* `hidden` must win over the display:flex above. */
+.note-display[hidden] {
+  display: none;
+}
+
+.note-display-btn {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  background: #f7f7f7;
+  color: #666;
+}
+
+.note-display-btn[aria-pressed='true'] {
+  background: #eaf3ff;
+  border-color: #8fbcf5;
+  color: #1a4d8f;
+}
+
+/* The staff replaces the big letter name (practice-session-view.ts's
+   applyNoteDisplay): drawn as one SVG whose ink is currentColor, the target
+   in the same near-black as the letter, upcoming notes lighter. It is
+   full-bleed -- practice-session-view.ts's drawStaff() sets the container's
+   width to the window's visible width and centers it past the page's narrow
+   column -- and the SVG's own pixel size comes from core's sizeStaff(). */
+.pp-staff .staff {
+  display: block;
+  margin: 0 auto;
+  color: #1a1a1a;
+}
+
+.staff .staff-note-upcoming {
+  color: #a3a3a3;
+}
+
+/* --- ABC: real sheet music (score) ----------------------------------------
+   score-view.ts draws a window of the piece with core's layout into a
+   full-bleed container; the ink is currentColor, so a note's state is just a
+   colour. Beams, rests and bar lines belong to no single note and keep the
+   default ink. */
+
+.pp-score .score {
+  display: block;
+  margin: 0 auto;
+  color: #1a1a1a;
+}
+
+.score [data-part='finger-suggested'] {
+  color: #6b7280;
+}
+
+/* The finger line under the big note name (Letters display of an ABC piece). */
+.pp-finger {
+  min-height: 1.4em;
+  font-size: 1.1rem;
+  color: #1a1a1a;
+  text-align: center;
+}
+
+.pp-finger[data-source='suggested'] {
+  color: #6b7280;
+}
+
+.score [data-state='due'] {
+  color: #1a4d8f;
+}
+
+.score [data-state='hit'] {
+  color: #1a7f37;
+}
+
+.score [data-state='missed'] {
+  color: #b91c1c;
+}
+
+.score-playhead {
+  stroke: #b45309;
+  pointer-events: none;
+}
+
+/* --- ABC: practice style, tempo and play-along settings ----------------------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.abc-style {
+  margin-block-start: 0.9rem;
+  margin-block-end: 0.25rem;
+}
+
+.abc-style-hint {
+  margin-block: 0 0.6rem;
+}
+
+.abc-options {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.abc-options[hidden] {
+  display: none;
+}
+
+.abc-tempo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.abc-tempo-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.abc-step-btn {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: #1a1a1a;
+  background: #f7f7f7;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+}
+
+.abc-tempo-input {
+  width: 4.5rem;
+  padding: 0.3rem 0.4rem;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  color: #1a1a1a;
+}
+
+.abc-tempo-slider {
+  flex: 1 1 8rem;
+  min-width: 8rem;
+}
+
+.abc-tempo-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin-block: 0.35rem 0.6rem;
+}
+
+.abc-tempo-info .hint {
+  margin: 0;
+}
+
+.abc-reset-btn {
+  font-size: 0.8rem;
+  color: #1a4d8f;
+  background: none;
+  border: 1px solid #8fbcf5;
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+}
+
+.abc-click-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+/* --- ABC: timed play-along session ---------------------------------------------
+   play-along-view.ts. The header sits in the page column; the score is the
+   same full-bleed container the Wait-for-me session uses (.pp-score). */
+
+.pa-session {
+  margin-block: 0.75rem 0;
+}
+
+/* Several of the blocks below set their own `display`, which would otherwise
+   beat the `hidden` attribute's default `display: none`. */
+.pa-session [hidden],
+.abc-options [hidden] {
+  display: none;
+}
+
+.pa-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.9rem;
+  padding-block: 0.25rem;
+}
+
+.pa-tempo {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pa-beats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pa-beat {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  background: #e1e1e1;
+}
+
+/* The downbeat is bigger and ringed, so beat 1 reads even when it is not lit. */
+.pa-beat-accent {
+  width: 1.15rem;
+  height: 1.15rem;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 3px #b8b8b8;
+}
+
+.pa-beat-lit {
+  background: #1a4d8f;
+  transform: scale(calc(1 + 0.35 * var(--pulse, 0)));
+}
+
+.pa-beat-accent.pa-beat-lit {
+  background: #b45309;
+}
+
+.pa-progress {
+  font-size: 0.85rem;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+.pa-stop-btn {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #b91c1c;
+  background: none;
+  border: 1px solid #e3a3a3;
+  border-radius: 999px;
+  padding: 0.3rem 1rem;
+}
+
+.pa-notice {
+  margin-block: 0.25rem;
+  font-size: 0.8rem;
+  color: #8a5b00;
+}
+
+/* The count-in number / "Play!". Its height is always reserved, so the score
+   does not jump when the music starts. */
+.pa-cue {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 3.4rem;
+  font-size: 2.6rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #1a4d8f;
+  font-variant-numeric: tabular-nums;
+}
+
+.pa-cue[data-kind='ready'] {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #666;
+}
+
+.pa-cue[data-kind='play'] {
+  color: #1a7f37;
+}
+
+.pa-stage {
+  text-align: center;
+}
+
+.pa-letters {
+  min-height: 6.5rem;
+  padding-block: 0.5rem;
+}
+
+.pa-target {
+  font-size: 4.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #1a1a1a;
+}
+
+.pa-target[data-state='due'] {
+  color: #1a4d8f;
+}
+
+.pa-target[data-state='hit'] {
+  color: #1a7f37;
+}
+
+.pa-target[data-state='missed'] {
+  color: #b91c1c;
+}
+
+.pa-signal {
+  margin-block: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #8a5b00;
+  background: #fff4e5;
+  border: 1px solid #f0c88a;
+  border-radius: 0.5rem;
+}
+
+.pa-results {
+  margin-block: 0.75rem 1rem;
+  padding: 1rem 1.25rem;
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 0.75rem;
+  outline: none;
+}
+
+.pa-results-headline {
+  font-size: 1.3rem;
+}
+
+.pa-results-tendency {
+  margin-block: 0.35rem 0.75rem;
+  color: #444;
+}
+
+.pa-results-none {
+  margin-block: 0.5rem 1rem;
+  font-weight: 600;
+  color: #1a7f37;
+}
+
+.pa-misses {
+  max-height: 14rem;
+  margin: 0.5rem 0 1rem;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 0.5rem;
+}
+
+.pa-misses li {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.pa-misses li:last-child {
+  border-bottom: 0;
+}
+
+.pa-results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* "Drill missed notes" checkbox in the note-display bar. */
+.drilling-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-inline-start: 1rem;
 }

@@ -33,7 +33,11 @@ import {
   type SequencePatternType,
   type ViolinStringName,
 } from '@violin/core';
-import { PracticeSessionView, type PracticeSessionElements } from './practice-session-view.js';
+import {
+  PracticeSessionView,
+  type NoteDisplay,
+  type PracticeSessionElements,
+} from './practice-session-view.js';
 
 export interface PlayingPracticeElements extends PracticeSessionElements {
   readonly configDetails: HTMLDetailsElement;
@@ -142,6 +146,16 @@ export class PlayingPracticeUi {
   private showConfigAgain(): void {
     this.view.end();
     this.el.configDetails.open = true;
+  }
+
+  /** Drilling on/off -- see `PracticeSessionView.setDrillingEnabled`. */
+  setDrillingEnabled(enabled: boolean): void {
+    this.view.setDrillingEnabled(enabled);
+  }
+
+  /** Letters vs. staff for the target note -- see `PracticeSessionView.setNoteDisplay`. */
+  setNoteDisplay(display: NoteDisplay): void {
+    this.view.setNoteDisplay(display);
   }
 
   /**

@@ -30,6 +30,39 @@
       </button>
     </nav>
 
+    <!-- Letters vs. staff (treble clef) for the target note in the two
+         practice modes -- one setting shared by both, so it lives here rather
+         than inside either mode's section. Hidden on the Finger Tuner tab.
+         See practice-session-view.ts's setNoteDisplay() and staff-svg.ts. -->
+    <div
+      class="note-display"
+      id="note-display"
+      role="group"
+      aria-label="Show target notes as"
+      hidden
+    >
+      <span class="note-display-label">Show notes as</span>
+      <button id="note-display-letters" type="button" class="note-display-btn" aria-pressed="true">
+        Letters
+      </button>
+      <button id="note-display-staff" type="button" class="note-display-btn" aria-pressed="false">
+        Staff
+      </button>
+      <label class="note-display-label drilling-option">
+        <input type="checkbox" id="drilling-checkbox" checked />
+        Drill missed notes
+      </label>
+      <label
+        class="note-display-label drilling-option"
+        id="fingers-option"
+        title="0 is an open string. Numbers written in the file (like !2! before a note) are black; where the file has none, a first-position suggestion is shown in grey."
+        hidden
+      >
+        <input type="checkbox" id="fingers-checkbox" checked />
+        Show finger numbers
+      </label>
+    </div>
+
     <section class="control-bar" aria-label="Input device and capture controls">
       <div class="control-group">
         <button id="request-devices-btn" type="button">Detect input devices</button>
@@ -120,7 +153,7 @@
           </label>
           <label class="pp-field">
             Max frequency (Hz)
-            <input type="number" id="pp-max-freq" value="1600" min="1" step="1" />
+            <input type="number" id="pp-max-freq" value="3000" min="1" step="1" />
           </label>
         </div>
         <div class="pp-preview" id="pp-preview" aria-live="polite"></div>
@@ -136,6 +169,7 @@
         <div class="pp-target" id="pp-target">
           <div class="pp-mode-label" id="pp-mode-label" aria-live="polite"></div>
           <div class="pp-target-note" id="pp-target-note">—</div>
+          <div class="pp-staff" id="pp-staff" hidden></div>
           <div class="pp-live-feedback" id="pp-live-feedback"></div>
           <div class="pp-dwell-track" id="pp-dwell-track">
             <div class="pp-dwell-fill" id="pp-dwell-fill"></div>
@@ -170,12 +204,14 @@
     </section>
 
     <!-- ABC Notation practice mode: import an ABC file, pick a tune, practice
-         its notes in order. Same session chrome (progress, target note, live
-         feedback, dwell bar, banner, give-up/skip buttons, complete screen)
-         as Playing Practice above, with its own element ids -- both are
-         driven by the shared PracticeSessionView (practice-session-view.ts).
-         See abc-practice-ui.ts and apps/desktop/CLAUDE.md's "ABC Notation
-         practice" section. -->
+         its notes. Two styles share this panel: "Play along" (timed: a
+         metronome clicks, the piece moves on the beat, each note must be in
+         tune AND on time -- play-along-view.ts) and "Wait for me" (the
+         untimed original: the app holds still until each note is right --
+         the same session chrome as Playing Practice, driven by the shared
+         PracticeSessionView in practice-session-view.ts). Own element ids
+         throughout. See abc-practice-ui.ts and apps/desktop/CLAUDE.md's "ABC
+         Notation practice" and "ABC tempo, beats and play-along" sections. -->
     <section class="abc-practice" id="abc-practice" hidden aria-label="ABC Notation practice">
       <details class="pp-config" id="abc-config" open>
         <summary>Sheet music (ABC file)</summary>
@@ -208,17 +244,103 @@
         <div class="abc-summary" id="abc-summary" aria-live="polite"></div>
         <ul class="abc-warnings" id="abc-warnings"></ul>
         <div class="pp-config-error" id="abc-error" hidden></div>
+
+        <div class="note-display abc-style" role="group" aria-label="Practice style">
+          <span class="note-display-label">Practice style</span>
+          <button
+            id="abc-style-play-along"
+            type="button"
+            class="note-display-btn"
+            aria-pressed="true"
+          >
+            Play along
+          </button>
+          <button id="abc-style-wait" type="button" class="note-display-btn" aria-pressed="false">
+            Wait for me
+          </button>
+        </div>
+        <p class="hint abc-style-hint" id="abc-style-hint"></p>
+
+        <!-- Play-along settings. Tempo is UI state only: it is read from the
+             file when the piece is chosen, adjusted here, and never written
+             back (the file is not even kept). -->
+        <fieldset class="abc-options" id="abc-playalong-options" disabled>
+          <legend class="visually-hidden">Play-along settings</legend>
+          <div class="abc-tempo">
+            <span class="abc-tempo-label">Tempo <span id="abc-tempo-unit">♩</span> =</span>
+            <button
+              id="abc-tempo-minus"
+              type="button"
+              class="abc-step-btn"
+              aria-label="Slower by 1 beat per minute"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              id="abc-tempo-input"
+              class="abc-tempo-input"
+              min="20"
+              max="300"
+              step="1"
+              value="80"
+              inputmode="numeric"
+              aria-label="Tempo in beats per minute"
+            />
+            <button
+              id="abc-tempo-plus"
+              type="button"
+              class="abc-step-btn"
+              aria-label="Faster by 1 beat per minute"
+            >
+              +
+            </button>
+            <input
+              type="range"
+              id="abc-tempo-slider"
+              class="abc-tempo-slider"
+              min="20"
+              max="300"
+              step="1"
+              value="80"
+              aria-label="Tempo slider"
+            />
+          </div>
+          <div class="abc-tempo-info">
+            <span class="hint" id="abc-tempo-hint" aria-live="polite"></span>
+            <button id="abc-tempo-reset" type="button" class="abc-reset-btn" hidden></button>
+          </div>
+          <div class="pp-config-grid">
+            <label class="pp-field">
+              Count-in
+              <select id="abc-countin-select">
+                <option value="1" selected>One bar</option>
+                <option value="2">Two bars</option>
+                <option value="0">None</option>
+              </select>
+            </label>
+            <label class="abc-click-field">
+              <input type="checkbox" id="abc-click-checkbox" checked />
+              Metronome click
+            </label>
+          </div>
+        </fieldset>
+
         <div class="pp-config-actions">
-          <button id="abc-start-btn" type="button" disabled>Start practicing</button>
+          <button id="abc-start-btn" type="button" disabled>Start play-along</button>
         </div>
       </details>
 
+      <!-- Wait for me: the untimed session (also where "practice missed notes" runs). -->
       <div class="pp-session" id="abc-session" hidden>
         <div class="pp-progress" id="abc-progress"></div>
 
         <div class="pp-target" id="abc-target">
           <div class="pp-mode-label" id="abc-mode-label" aria-live="polite"></div>
           <div class="pp-target-note" id="abc-target-note">—</div>
+          <div class="pp-finger" id="abc-finger"></div>
+          <div class="pp-staff" id="abc-staff" hidden></div>
+          <div class="pp-score" id="abc-score" hidden></div>
           <div class="pp-upcoming" id="abc-upcoming"></div>
           <div class="pp-live-feedback" id="abc-live-feedback"></div>
           <div class="pp-dwell-track">
@@ -238,6 +360,50 @@
         <div class="pp-complete" id="abc-complete" hidden>
           <p class="pp-complete-message">Piece complete!</p>
           <button id="abc-restart-btn" type="button">Practice another piece</button>
+        </div>
+      </div>
+
+      <!-- Play along: the timed session (play-along-view.ts). The header sits in
+           the page column; the score (like the single-note staff) breaks out to
+           the window's full width. -->
+      <div class="pa-session" id="abc-playalong" hidden>
+        <div class="pa-header">
+          <span class="pa-tempo" id="pa-tempo"></span>
+          <span class="pa-beats" id="pa-beats" aria-hidden="true"></span>
+          <span class="pa-progress" id="pa-progress"></span>
+          <button id="pa-stop-btn" type="button" class="pa-stop-btn">Stop</button>
+        </div>
+        <div class="pa-notice" id="pa-notice" hidden></div>
+        <!-- Count-in number / "Play!". Its height is always reserved, so the
+             score below does not jump when the music starts. -->
+        <div class="pa-cue" id="pa-cue" aria-live="polite" aria-atomic="true"></div>
+
+        <div class="pa-stage" id="pa-stage">
+          <div class="pp-score pa-score" id="pa-score" hidden></div>
+          <div class="pa-letters" id="pa-letters">
+            <div class="pa-target" id="pa-target">—</div>
+            <div class="pp-finger" id="pa-finger"></div>
+            <div class="pp-upcoming" id="pa-next"></div>
+          </div>
+          <div class="pa-signal" id="pa-signal" role="alert" hidden>
+            No audio input — press Start in the input bar above.
+          </div>
+          <div class="pp-live-feedback" id="pa-live-feedback"></div>
+          <div class="pp-dwell-track">
+            <div class="pp-dwell-fill" id="pa-dwell-fill"></div>
+          </div>
+        </div>
+
+        <div class="pa-results" id="pa-results" tabindex="-1" aria-live="polite" hidden>
+          <h2 class="pa-results-headline" id="pa-results-headline"></h2>
+          <p class="pa-results-tendency" id="pa-results-tendency" hidden></p>
+          <p class="pa-results-none" id="pa-results-none" hidden></p>
+          <ul class="pa-misses" id="pa-misses" aria-label="Notes to work on"></ul>
+          <div class="pa-results-actions">
+            <button id="pa-again-btn" type="button">Play again</button>
+            <button id="pa-missed-btn" type="button">Practice missed notes</button>
+            <button id="pa-settings-btn" type="button">Change settings</button>
+          </div>
         </div>
       </div>
     </section>

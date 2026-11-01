@@ -13,9 +13,12 @@ import type {
 import {
   CaptureNotice,
   CompleteBlock,
+  DrillingToggle,
+  NoteDisplayToggle,
   PillButton,
   SegmentedControl,
   SessionPanel,
+  type NoteDisplay,
 } from './PracticeParts';
 
 /**
@@ -71,6 +74,11 @@ export interface PlayingPracticeScreenProps {
       }
     | undefined;
   readonly onResumeCapture: () => void;
+  /** Letters vs. staff for the target note -- shared with the ABC screen, held in App.tsx. */
+  readonly noteDisplay: NoteDisplay;
+  readonly onSetNoteDisplay: (display: NoteDisplay) => void;
+  readonly drilling: boolean;
+  readonly onSetDrilling: (on: boolean) => void;
   readonly onToggleString: (name: ViolinStringName, selected: boolean) => void;
   readonly onSetPatternType: (pattern: SequencePatternType) => void;
   readonly onSetDirection: (direction: SequenceDirection) => void;
@@ -87,6 +95,10 @@ export function PlayingPracticeScreen({
   viewState,
   captureNotice,
   onResumeCapture,
+  noteDisplay,
+  onSetNoteDisplay,
+  drilling,
+  onSetDrilling,
   onToggleString,
   onSetPatternType,
   onSetDirection,
@@ -104,6 +116,9 @@ export function PlayingPracticeScreen({
       </View>
 
       {captureNotice && <CaptureNotice notice={captureNotice} onAction={onResumeCapture} />}
+
+      <NoteDisplayToggle value={noteDisplay} onChange={onSetNoteDisplay} />
+      <DrillingToggle value={drilling} onChange={onSetDrilling} />
 
       {viewState.phase === 'config' ? (
         <ConfigPanel
@@ -124,7 +139,12 @@ export function PlayingPracticeScreen({
           onPress={onRestart}
         />
       ) : (
-        <SessionPanel session={viewState.session} onGiveUp={onGiveUp} onSkipDrill={onSkipDrill} />
+        <SessionPanel
+          session={viewState.session}
+          noteDisplay={noteDisplay}
+          onGiveUp={onGiveUp}
+          onSkipDrill={onSkipDrill}
+        />
       )}
     </View>
   );

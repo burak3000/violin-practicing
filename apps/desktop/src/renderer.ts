@@ -57,6 +57,12 @@ const debugPanel = byId<HTMLElement>('debug-panel');
 const modeTabTuner = byId<HTMLButtonElement>('mode-tab-tuner');
 const modeTabPractice = byId<HTMLButtonElement>('mode-tab-practice');
 const modeTabAbc = byId<HTMLButtonElement>('mode-tab-abc');
+const noteDisplayBar = byId<HTMLElement>('note-display');
+const noteDisplayLetters = byId<HTMLButtonElement>('note-display-letters');
+const noteDisplayStaff = byId<HTMLButtonElement>('note-display-staff');
+const drillingCheckbox = byId<HTMLInputElement>('drilling-checkbox');
+const fingersOption = byId<HTMLElement>('fingers-option');
+const fingersCheckbox = byId<HTMLInputElement>('fingers-checkbox');
 
 const requestDevicesBtn = byId<HTMLButtonElement>('request-devices-btn');
 const deviceStatus = byId<HTMLDivElement>('device-status');
@@ -105,6 +111,7 @@ const playingPracticeUi = new PlayingPracticeUi({
   skipDrillBtn: byId<HTMLButtonElement>('pp-skip-drill-btn'),
   complete: byId<HTMLElement>('pp-complete'),
   restartBtn: byId<HTMLButtonElement>('pp-restart-btn'),
+  staff: byId<HTMLElement>('pp-staff'),
 });
 
 // ABC Notation practice: same session chrome as Playing Practice (its own
@@ -121,12 +128,56 @@ const abcPracticeUi = new AbcPracticeUi({
   warnings: byId<HTMLUListElement>('abc-warnings'),
   error: byId<HTMLElement>('abc-error'),
   startBtn: byId<HTMLButtonElement>('abc-start-btn'),
+  playAlongStyleBtn: byId<HTMLButtonElement>('abc-style-play-along'),
+  waitStyleBtn: byId<HTMLButtonElement>('abc-style-wait'),
+  styleHint: byId<HTMLElement>('abc-style-hint'),
+  playAlongOptions: byId<HTMLFieldSetElement>('abc-playalong-options'),
+  tempo: {
+    unit: byId<HTMLElement>('abc-tempo-unit'),
+    input: byId<HTMLInputElement>('abc-tempo-input'),
+    slider: byId<HTMLInputElement>('abc-tempo-slider'),
+    minus: byId<HTMLButtonElement>('abc-tempo-minus'),
+    plus: byId<HTMLButtonElement>('abc-tempo-plus'),
+    reset: byId<HTMLButtonElement>('abc-tempo-reset'),
+    hint: byId<HTMLElement>('abc-tempo-hint'),
+  },
+  countInSelect: byId<HTMLSelectElement>('abc-countin-select'),
+  clickCheckbox: byId<HTMLInputElement>('abc-click-checkbox'),
+  playAlong: {
+    root: byId<HTMLElement>('abc-playalong'),
+    tempo: byId<HTMLElement>('pa-tempo'),
+    beats: byId<HTMLElement>('pa-beats'),
+    progress: byId<HTMLElement>('pa-progress'),
+    stopBtn: byId<HTMLButtonElement>('pa-stop-btn'),
+    notice: byId<HTMLElement>('pa-notice'),
+    cue: byId<HTMLElement>('pa-cue'),
+    stage: byId<HTMLElement>('pa-stage'),
+    score: byId<HTMLElement>('pa-score'),
+    letters: byId<HTMLElement>('pa-letters'),
+    target: byId<HTMLElement>('pa-target'),
+    finger: byId<HTMLElement>('pa-finger'),
+    next: byId<HTMLElement>('pa-next'),
+    signalLost: byId<HTMLElement>('pa-signal'),
+    liveFeedback: byId<HTMLElement>('pa-live-feedback'),
+    dwellFill: byId<HTMLElement>('pa-dwell-fill'),
+    results: byId<HTMLElement>('pa-results'),
+    resultsHeadline: byId<HTMLElement>('pa-results-headline'),
+    resultsTendency: byId<HTMLElement>('pa-results-tendency'),
+    resultsMisses: byId<HTMLUListElement>('pa-misses'),
+    resultsNoMisses: byId<HTMLElement>('pa-results-none'),
+    playAgainBtn: byId<HTMLButtonElement>('pa-again-btn'),
+    practiceMissedBtn: byId<HTMLButtonElement>('pa-missed-btn'),
+    changeSettingsBtn: byId<HTMLButtonElement>('pa-settings-btn'),
+  },
   session: byId<HTMLElement>('abc-session'),
   progress: byId<HTMLElement>('abc-progress'),
   targetRoot: byId<HTMLElement>('abc-target'),
   modeLabel: byId<HTMLElement>('abc-mode-label'),
   targetNote: byId<HTMLElement>('abc-target-note'),
   upcoming: byId<HTMLElement>('abc-upcoming'),
+  finger: byId<HTMLElement>('abc-finger'),
+  staff: byId<HTMLElement>('abc-staff'),
+  score: byId<HTMLElement>('abc-score'),
   liveFeedback: byId<HTMLElement>('abc-live-feedback'),
   dwellFill: byId<HTMLElement>('abc-dwell-fill'),
   successBanner: byId<HTMLElement>('abc-success-banner'),
@@ -338,11 +389,39 @@ function setMode(mode: AppMode): void {
   modeTabPractice.setAttribute('aria-pressed', String(mode === 'practice'));
   modeTabAbc.setAttribute('aria-pressed', String(mode === 'abc'));
   appTitle.textContent = MODE_TITLES[mode];
+  noteDisplayBar.hidden = mode === 'tuner';
+  fingersOption.hidden = mode !== 'abc'; // finger numbers exist for ABC pieces only
 }
 
 modeTabTuner.addEventListener('click', () => setMode('tuner'));
 modeTabPractice.addEventListener('click', () => setMode('practice'));
 modeTabAbc.addEventListener('click', () => setMode('abc'));
+
+// --- Letters / staff (target note display) ------------------------------------
+//
+// One preference for both practice modes (Playing Practice and ABC Notation
+// share the same session rendering). Not persisted -- v1 has no persistence
+// by decision (see packages/core's persistence ports) -- so it resets to
+// "Letters" on each launch.
+
+function setNoteDisplay(display: 'letters' | 'staff'): void {
+  noteDisplayLetters.setAttribute('aria-pressed', String(display === 'letters'));
+  noteDisplayStaff.setAttribute('aria-pressed', String(display === 'staff'));
+  playingPracticeUi.setNoteDisplay(display);
+  abcPracticeUi.setNoteDisplay(display);
+}
+
+noteDisplayLetters.addEventListener('click', () => setNoteDisplay('letters'));
+noteDisplayStaff.addEventListener('click', () => setNoteDisplay('staff'));
+
+fingersCheckbox.addEventListener('change', () => {
+  abcPracticeUi.setFingersEnabled(fingersCheckbox.checked);
+});
+
+drillingCheckbox.addEventListener('change', () => {
+  playingPracticeUi.setDrillingEnabled(drillingCheckbox.checked);
+  abcPracticeUi.setDrillingEnabled(drillingCheckbox.checked);
+});
 
 // --- Device enumeration --------------------------------------------------
 
@@ -471,7 +550,10 @@ function handleAnalysis(
   // no Playing Practice sequence has been started yet, and independent of
   // which mode tab is currently visible (see setMode()'s comment).
   playingPracticeUi.handleAnalysisFrame(reading, rawReading, message.workletTimestampMs);
-  // ABC Notation practice: the same hop, same reading, its own session.
+  // ABC Notation practice: the same hop, same reading, its own session. For
+  // the timed play-along, `message.workletTimestampMs` (Date.now() stamped
+  // inside the worklet) is the scoring clock, and the run reads the same
+  // Date.now() for the display and the metronome (see abc-practice-ui.ts).
   abcPracticeUi.handleAnalysisFrame(reading, rawReading, message.workletTimestampMs);
 
   debugRaw.textContent = formatForDebug(rawReading);

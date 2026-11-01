@@ -1,5 +1,7 @@
 import { Text, View, Pressable, StyleSheet } from 'react-native';
 import type { PlayingPracticeSessionViewState } from './practice-session-runner';
+import { ScoreView } from './ScoreView';
+import { StaffView } from './StaffView';
 
 /**
  * Presentational pieces shared by the Playing Practice screen
@@ -81,6 +83,80 @@ export function SegmentedControl<T extends string | number>({
   );
 }
 
+/** How the target note is shown: its letter name ("D4") or on a staff. One setting, shared by both practice screens (held in App.tsx). */
+export type NoteDisplay = 'letters' | 'staff';
+
+const NOTE_DISPLAY_OPTIONS: ReadonlyArray<{ value: NoteDisplay; label: string }> = [
+  { value: 'letters', label: 'Letters' },
+  { value: 'staff', label: 'Staff' },
+];
+
+/** "Drill missed notes: On | Off". Shared by both practice screens (held in App.tsx). */
+export function DrillingToggle({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <View style={styles.noteDisplayRow}>
+      <Text style={styles.noteDisplayLabel}>Drill missed notes</Text>
+      <SegmentedControl
+        options={DRILLING_OPTIONS}
+        value={value ? 'on' : 'off'}
+        onChange={(choice) => onChange(choice === 'on')}
+      />
+    </View>
+  );
+}
+
+const DRILLING_OPTIONS = [
+  { value: 'on', label: 'On' },
+  { value: 'off', label: 'Off' },
+] as const;
+
+/** "Finger numbers: Show | Hide" (ABC practice; held in App.tsx). 0 is an open string; grey numbers are suggestions. */
+export function FingersToggle({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <View style={styles.noteDisplayRow}>
+      <Text style={styles.noteDisplayLabel}>Finger numbers</Text>
+      <SegmentedControl
+        options={FINGER_OPTIONS}
+        value={value ? 'show' : 'hide'}
+        onChange={(choice) => onChange(choice === 'show')}
+      />
+    </View>
+  );
+}
+
+const FINGER_OPTIONS = [
+  { value: 'show', label: 'Show' },
+  { value: 'hide', label: 'Hide' },
+] as const;
+
+/** "Show notes as: Letters | Staff". */
+export function NoteDisplayToggle({
+  value,
+  onChange,
+}: {
+  value: NoteDisplay;
+  onChange: (value: NoteDisplay) => void;
+}) {
+  return (
+    <View style={styles.noteDisplayRow}>
+      <Text style={styles.noteDisplayLabel}>Show notes as</Text>
+      <SegmentedControl options={NOTE_DISPLAY_OPTIONS} value={value} onChange={onChange} />
+    </View>
+  );
+}
+
 /**
  * The "capture paused / disconnected" notice (Phase 8) both practice tabs
  * show, so a paused or lost input is never hidden behind the Finger Tuner tab.
@@ -100,33 +176,53 @@ export function CaptureNotice({
   );
 }
 
-/** The "...complete!" screen both modes end on. */
+/** The "...complete!" screen both modes end on. `secondary` is an optional extra button (ABC practice offers "Play along again" after practicing just the missed notes). */
 export function CompleteBlock({
   message,
   buttonLabel,
   onPress,
+  secondary,
 }: {
   message: string;
   buttonLabel: string;
   onPress: () => void;
+  secondary?: { label: string; onPress: () => void };
 }) {
   return (
     <View style={styles.completeBlock}>
       <Text style={styles.completeMessage}>{message}</Text>
       <PillButton label={buttonLabel} onPress={onPress} primary />
+      {secondary && <PillButton label={secondary.label} onPress={secondary.onPress} />}
+    </View>
+  );
+}
+
+/** The live "Hearing A4 (+8c from target)" line, shared by the Wait-for-me session and the play-along panel. Reserves its height so the layout does not jump when text appears. */
+export function LiveFeedbackLine({ text }: { text: string }) {
+  return <Text style={styles.liveFeedback}>{text.length > 0 ? text : ' '}</Text>;
+}
+
+/** The dwell-progress bar (how far through the current in-tune hold), shared by the Wait-for-me session and the play-along panel. */
+export function DwellBar({ fraction }: { fraction: number }) {
+  return (
+    <View style={styles.dwellTrack}>
+      <View style={[styles.dwellFill, { width: `${Math.min(1, Math.max(0, fraction)) * 100}%` }]} />
     </View>
   );
 }
 
 export function SessionPanel({
   session,
+  noteDisplay,
   onGiveUp,
   onSkipDrill,
 }: {
   session: Extract<PlayingPracticeSessionViewState, { kind: 'active' }>;
+  noteDisplay: NoteDisplay;
   onGiveUp: () => void;
   onSkipDrill: () => void;
 }) {
+  const showStaff = noteDisplay === 'staff';
   const isDrilling = session.mode === 'drilling';
   return (
     <View style={styles.session}>
@@ -134,12 +230,43 @@ export function SessionPanel({
 
       <View style={styles.target}>
         {isDrilling && <Text style={styles.modeLabel}>Drilling</Text>}
-        <Text style={styles.targetNote}>{session.targetNoteLabel}</Text>
+        {showStaff ? (
+          session.score ? (
+            // An ABC session over the piece in order: the notated score,
+            // starting at the target's bar, with the target note highlighted
+            // (it follows Drilling's current target too).
+            <ScoreView
+              piece={session.score.piece}
+              firstBar={session.score.piece.noteElements[session.score.targetIndex]?.bar ?? 0}
+              targetIndex={session.score.targetIndex}
+              fingers={session.score.fingers}
+            />
+          ) : (
+            // On a staff the target (and, for ABC, the notes after it) are
+            // drawn instead of the letter name and the "Next:" text line.
+            // A runner with a "Next:" preview (ABC practice) also looks ahead on the staff.
+            <StaffView notes={session.staffNotes} lookahead={session.upcomingText !== undefined} />
+          )
+        ) : (
+          <>
+            <Text style={styles.targetNote}>{session.targetNoteLabel}</Text>
 
-        {/* Only ever present for ABC practice (see PracticeSessionRunner's
-            `showUpcoming`): a preview of the next few notes of the piece. */}
-        {session.upcomingText !== undefined && session.upcomingText.length > 0 && (
-          <Text style={styles.upcoming}>{session.upcomingText}</Text>
+            {/* Only ever present for ABC practice (see PracticeSessionRunner's
+                `showUpcoming`): a preview of the next few notes of the piece. */}
+            {session.upcomingText !== undefined && session.upcomingText.length > 0 && (
+              <Text style={styles.upcoming}>{session.upcomingText}</Text>
+            )}
+          </>
+        )}
+
+        {/* Finger line: under the letter name, or under a staff that cannot carry the digits
+            (the score window draws its own digits over the notes). */}
+        {session.finger !== undefined && !(showStaff && session.score) && (
+          <Text
+            style={[styles.finger, session.finger.source === 'suggested' && styles.fingerSuggested]}
+          >
+            {session.finger.text}
+          </Text>
         )}
 
         {/* Live feedback + dwell bar: reused verbatim by Drilling as of
@@ -183,6 +310,15 @@ export function SessionPanel({
 }
 
 const styles = StyleSheet.create({
+  noteDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  noteDisplayLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
   captureNotice: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#ccc',
@@ -244,6 +380,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1a1a1a',
     fontVariant: ['tabular-nums'],
+  },
+  finger: {
+    fontSize: 18,
+    color: '#1a1a1a',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  fingerSuggested: {
+    color: '#6b7280',
+    fontStyle: 'italic',
   },
   upcoming: {
     fontFamily: 'Menlo, monospace',
