@@ -353,8 +353,6 @@ export class PlayAlongView {
         : this.runner.piece.notes[view.targetNoteIndex];
     const mark = this.showFingers && note ? fingerMarkFor(note) : undefined;
     setText(this.el.finger, describeFinger(mark));
-    if (mark) this.el.finger.dataset.source = mark.source;
-    else delete this.el.finger.dataset.source;
     setText(
       this.el.next,
       view.upcomingLabels.length > 0 ? `Next: ${view.upcomingLabels.join(' ')}` : '',

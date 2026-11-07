@@ -46,7 +46,7 @@ platform-integration phase — this is that phase, and per the plan's Hard
 Rule 3 the policy is decided and documented in that module rather than
 guessed independently per platform.
 
-**29 test files, 901 tests, all passing** (`pnpm --filter @violin/core test`; 197 / 11 files through Phase 8, +179 for ABC notation practice and the staff display -- see "ABC notation" and "Staff notation" -- and +503 for ABC rhythm, tempo, the timed play-along and the rhythmic score notation: see "ABC rhythm, meter and tempo", "Timed play-along" and "Score notation").
+**29 test files, 895 tests, all passing** (`pnpm --filter @violin/core test`; 197 / 11 files through Phase 8, +179 for ABC notation practice and the staff display -- see "ABC notation" and "Staff notation" -- and +503 for ABC rhythm, tempo, the timed play-along and the rhythmic score notation: see "ABC rhythm, meter and tempo", "Timed play-along" and "Score notation").
 
 Two correctness fixes made during Phase 2 verification, worth knowing about:
 
@@ -830,34 +830,30 @@ src/notation/staff-glyphs.ts [--opentype <opentype.js module>]` (the font, its
 
 ABC practice can show which violin finger plays each note (0 = open string, 1-4),
 as a small digit over the note on the score and as a line ("Finger 2", "Open
-string") under the letter name. The user asked for numbers from **both** sources:
+string") under the letter name. **The numbers come only from the file**: which finger
+plays a pitch depends on the position, and pieces shift, so the app never works one out
+(a first-position suggestion existed briefly and was removed at the user's request). A
+note the file leaves unmarked shows no number.
 
-- **From the file**: the parser reads the standard fingering decorations `!0!`-`!4!`
+- The parser reads the standard fingering decorations `!0!`-`!4!`
   (and the old `+1+` style) before a note into `AbcVoice.fingers`, parallel to
   `notes` (`undefined` where none). Other digits (`!5!`) are ignored; a decoration
   before a rest belongs to the rest; a tied note keeps the first part's number; in a
   chord a member's number goes with the top note (an outer `!2![CE]` is used when
   the member has none). `buildAbcPracticeSequence` carries it on `SequenceNote.finger`
   -- **only when `transposeSemitones` is 0**: after a shift the notes sit on other
-  strings, so the file's numbers no longer apply and suggestions are used.
-- **Suggested** (`suggestFinger(midi)`): first position only. The open string at that
-  pitch is 0; otherwise the _highest_ string the note is within seven semitones above,
-  with 1-2 semitones -> finger 1, 3-4 -> 2, 5-6 -> 3, 7 -> 4 (so D5 is 3 on the A
-  string). Above the fourth finger on the E string (about C6 up) there is **no
-  suggestion**: that needs a higher position, which depends on the passage, so
-  nothing is guessed. It does not know shifts, extensions, or keys' low/high finger
-  placements -- it is a starting point, not a teacher.
+  strings, so the file's numbers no longer apply and none are shown.
 
-`fingerMarkFor(note)` picks the file's number first and says where it came from
-(`FingerMark.source: 'file' | 'suggested'`); `fingerMarksOf(notes)` does it for a
+`fingerMarkFor(note)` turns the file's number into a mark (`undefined` when there is none);
+`fingerMarksOf(notes)` does it for a
 whole piece; `describeFinger` gives the words. `layoutScore`/`sizeScore` take
 `fingers` (marks indexed by practice note) and draw one digit per note (the italic
 tuplet digit glyphs) above the staff, the head and any stem/beam, centred on the
-head, with part `finger` or `finger-suggested` and the note's `noteIndex` (so it
+head, with part `finger` and the note's `noteIndex` (so it
 takes the note's state colour); it needs no horizontal room, so spacing and
 `widthSpaces` are identical with or without. `PlayAlongRunView.targetNoteIndex` (new)
 says which note `targetLabel` names, so the Letters display can show its finger.
-Tests: `notation/fingering.test.ts` (22).
+Tests: `notation/fingering.test.ts` (16).
 
 ## Persistence (`persistence/ports.ts`, `persistence/in-memory.ts`)
 
@@ -903,7 +899,7 @@ in-session features (e.g. a running streak) work correctly.
 
 From the repo root:
 
-- `pnpm --filter @violin/core test` — run the full Vitest suite once (`vitest run`). Currently **29 test files, 901 tests**, all passing.
+- `pnpm --filter @violin/core test` — run the full Vitest suite once (`vitest run`). Currently **29 test files, 895 tests**, all passing.
 - `pnpm --filter @violin/core test:watch` — Vitest watch mode.
 - `pnpm --filter @violin/core typecheck` — `tsc --noEmit`.
 - `pnpm test` / `pnpm typecheck` / `pnpm lint` from the repo root also cover this package (via `pnpm -r --if-present`) alongside every other workspace package.

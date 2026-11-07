@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseAbc } from '../abc/abc-parser.js';
 import { buildAbcPracticeSequence } from '../abc/abc-practice.js';
-import { describeFinger, fingerMarkFor, fingerMarksOf, suggestFinger } from './fingering.js';
+import { describeFinger, fingerMarkFor, fingerMarksOf } from './fingering.js';
 import { layoutScore } from './score-layout.js';
 
 function tune(body: string, key = 'C') {
@@ -13,39 +13,6 @@ function practice(body: string, key = 'C', options = {}) {
   if (result.status !== 'ok') throw new Error(result.status);
   return result;
 }
-
-describe('suggestFinger (first position)', () => {
-  it('gives 0 for every open string', () => {
-    expect([55, 62, 69, 76].map(suggestFinger)).toEqual([0, 0, 0, 0]);
-  });
-
-  it('walks D major on the A string: 0 1 2 3 then the open E', () => {
-    // A4 B4 C#5 D5 E5
-    expect([69, 71, 73, 74, 76].map(suggestFinger)).toEqual([0, 1, 2, 3, 0]);
-  });
-
-  it('puts both placements of a finger on the same number', () => {
-    // On the D string: E4 (high 1) / D#4 (low 1) -> 1, F4/F#4 -> 2, G4/G#4 -> 3, A4 is the open A.
-    expect([63, 64, 65, 66, 67, 68, 69].map(suggestFinger)).toEqual([1, 1, 2, 2, 3, 3, 0]);
-  });
-
-  it('uses the fourth finger only where there is no higher open string', () => {
-    expect(suggestFinger(83)).toBe(4); // B5 on the E string
-    expect(suggestFinger(76 + 7)).toBe(4);
-  });
-
-  it('prefers the higher string (D5 is the third finger on A, not a long stretch on D)', () => {
-    expect(suggestFinger(74)).toBe(3);
-    expect(suggestFinger(67)).toBe(3); // G4 on D
-  });
-
-  it('suggests nothing above the first position, or for junk', () => {
-    expect(suggestFinger(84)).toBeUndefined(); // C6
-    expect(suggestFinger(96)).toBeUndefined();
-    expect(suggestFinger(54)).toBeUndefined(); // below the open G
-    expect(suggestFinger(Number.NaN)).toBeUndefined();
-  });
-});
 
 describe('finger numbers in the ABC file', () => {
   it('reads !0! to !4! before a note', () => {
@@ -84,53 +51,52 @@ describe('finger numbers in the ABC file', () => {
 });
 
 describe('fingerMarkFor / fingerMarksOf / describeFinger', () => {
-  it('prefers the file`s number and marks where each came from', () => {
-    const { notes } = practice('!2!A, B, C D');
-    const marks = fingerMarksOf(notes);
-    // A3 is 2 semitones above the open G string: the file says 2, the suggestion would be 1.
-    expect(marks[0]).toEqual({ finger: 2, source: 'file' });
-    expect(marks[1]).toEqual({ finger: 2, source: 'suggested' }); // B3, 4 semitones above G
-    expect(marks[3]).toEqual({ finger: 0, source: 'suggested' }); // D4 is the open string
+  it('shows the file`s number and nothing for a note it leaves unmarked', () => {
+    const marks = fingerMarksOf(practice('!2!A, B, C D').notes);
+    expect(marks[0]).toEqual({ finger: 2 });
+    expect(marks[1]).toBeUndefined();
+    expect(marks[2]).toBeUndefined();
+    expect(marks[3]).toBeUndefined(); // D4 is an open-string pitch, but the file does not say so
   });
 
   it('shows an open string written as !0!', () => {
-    expect(fingerMarkFor(practice('!0!D').notes[0]!)).toEqual({ finger: 0, source: 'file' });
+    expect(fingerMarkFor(practice('!0!D').notes[0]!)).toEqual({ finger: 0 });
   });
 
-  it('drops the file`s numbers (and suggests instead) after a transposition', () => {
+  it('keeps a number written for another position, whatever the pitch', () => {
+    // E5 played with the first finger (a shift) and A4 with the fourth on the D string.
+    const marks = fingerMarksOf(practice('!1!e !4!A').notes);
+    expect(marks).toEqual([{ finger: 1 }, { finger: 4 }]);
+    expect(fingerMarkFor(practice("!2!c'").notes[0]!)).toEqual({ finger: 2 }); // C6
+  });
+
+  it('shows nothing after a transposition (the file wrote them for the sheet`s own strings)', () => {
     const { notes } = practice('!4!A', 'C', { transposeSemitones: 12 });
     expect(notes[0]!.finger).toBeUndefined();
-  });
-
-  it('has no mark for a note above first position and no suggestion', () => {
-    expect(fingerMarkFor(practice("c'").notes[0]!)).toBeUndefined(); // C6
+    expect(fingerMarkFor(notes[0]!)).toBeUndefined();
   });
 
   it('describes them', () => {
-    expect(describeFinger({ finger: 0, source: 'file' })).toBe('Open string');
-    expect(describeFinger({ finger: 3, source: 'suggested' })).toBe('Finger 3');
+    expect(describeFinger({ finger: 0 })).toBe('Open string');
+    expect(describeFinger({ finger: 3 })).toBe('Finger 3');
     expect(describeFinger(undefined)).toBe('');
   });
 });
 
 describe('finger numbers on the score', () => {
-  const body = 'A, B, C D | E F G A |]';
+  const body = '!1!A, !2!B, !3!C !0!D | !1!E !2!F !3!G !0!A |]';
   const result = practice(body);
   const piece = result.piece;
 
   it('draws one digit per note, above the staff, only when asked', () => {
     const plain = layoutScore(piece, { firstBar: 0, widthSpaces: 60 });
-    expect(plain.primitives.some((p) => p.part === 'finger' || p.part === 'finger-suggested')).toBe(
-      false,
-    );
+    expect(plain.primitives.some((p) => p.part === 'finger')).toBe(false);
     const layout = layoutScore(piece, {
       firstBar: 0,
       widthSpaces: 60,
       fingers: fingerMarksOf(result.notes),
     });
-    const digits = layout.primitives.filter(
-      (p) => p.part === 'finger' || p.part === 'finger-suggested',
-    );
+    const digits = layout.primitives.filter((p) => p.part === 'finger');
     expect(digits).toHaveLength(result.notes.length);
     for (const d of digits) {
       expect(d.kind).toBe('glyph');
@@ -149,22 +115,15 @@ describe('finger numbers on the score', () => {
     expect(withFingers.widthSpaces).toBe(plain.widthSpaces);
   });
 
-  it('tags file numbers and suggestions differently, and skips notes without a mark', () => {
-    const r = practice("!1!A, B, c' D");
+  it('draws digits only over the notes the file marks', () => {
+    const r = practice("!1!A, B, c' !0!D");
     const layout = layoutScore(r.piece, {
       firstBar: 0,
       widthSpaces: 60,
       fingers: fingerMarksOf(r.notes),
     });
-    const parts = new Map(
-      layout.primitives
-        .filter((p) => p.part === 'finger' || p.part === 'finger-suggested')
-        .map((p) => [p.noteIndex, p.part]),
-    );
-    expect(parts.get(0)).toBe('finger');
-    expect(parts.get(1)).toBe('finger-suggested');
-    expect(parts.has(2)).toBe(false); // C6: no suggestion
-    expect(parts.get(3)).toBe('finger-suggested');
+    const marked = layout.primitives.filter((p) => p.part === 'finger').map((p) => p.noteIndex);
+    expect(marked).toEqual([0, 3]);
   });
 
   it('keeps a high note`s digit above its stem and inside the view box', () => {
@@ -172,12 +131,7 @@ describe('finger numbers on the score', () => {
     const layout = layoutScore(r.piece, {
       firstBar: 0,
       widthSpaces: 60,
-      fingers: [
-        { finger: 1, source: 'file' },
-        { finger: 2, source: 'file' },
-        { finger: 3, source: 'file' },
-        { finger: 4, source: 'file' },
-      ],
+      fingers: [{ finger: 1 }, { finger: 2 }, { finger: 3 }, { finger: 4 }],
     });
     const [, minY, , height] = layout.viewBox;
     const heads = layout.primitives.filter((p) => p.part === 'head');

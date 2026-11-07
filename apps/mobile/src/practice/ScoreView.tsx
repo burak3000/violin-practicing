@@ -47,8 +47,6 @@ const INK = '#1a1a1a';
 const COLOR_DUE = '#2563eb';
 const COLOR_HIT = '#1a7f37';
 const COLOR_MISSED = '#b91c1c';
-/** A finger number the app suggested (the file did not write one), when its note has no state colour. */
-const COLOR_SUGGESTED = '#6b7280';
 
 /** Never taller than this (px), whatever the width. */
 const MAX_SCORE_HEIGHT_PX = 260;
@@ -76,11 +74,6 @@ function colorOf(
     default:
       return INK;
   }
-}
-
-/** Suggested finger numbers are grey unless their note has a state colour. */
-function inkOrSuggested(primitive: ScorePrimitive, color: string): string {
-  return primitive.part === 'finger-suggested' && color === INK ? COLOR_SUGGESTED : color;
 }
 
 const PrimitiveElement = memo(function PrimitiveElement({
@@ -142,7 +135,7 @@ const ScoreDrawing = memo(function ScoreDrawing({
         <PrimitiveElement
           key={i}
           primitive={primitive}
-          color={inkOrSuggested(primitive, colorOf(primitive.noteIndex, noteStates, targetIndex))}
+          color={colorOf(primitive.noteIndex, noteStates, targetIndex)}
         />
       ))}
     </Svg>

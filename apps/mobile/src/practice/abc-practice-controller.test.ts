@@ -1080,7 +1080,7 @@ describe('AbcPracticeController: Wait for me spells notes the way the sheet does
 });
 
 describe('AbcPracticeController: finger numbers', () => {
-  // A3 is 2 semitones above the open G: the file says 2 (the suggestion would be 1); B3 and D4 have none.
+  // The file writes a finger for A3 only; B3, C4 and D4 are unmarked.
   const FINGERED = 'X:1\nM:4/4\nL:1/4\nQ:1/4=80\nK:C\n!2!A, B, C D |]\n';
 
   it('are shown by default and can be switched off on the import screen', () => {
@@ -1090,30 +1090,27 @@ describe('AbcPracticeController: finger numbers', () => {
     expect(importState(controller.getViewState()).showFingers).toBe(false);
   });
 
-  it('Wait for me: the target has a finger line, a file number wins, and the score gets the marks', () => {
+  it('Wait for me: the target has the file`s finger, and the score gets only the file`s marks', () => {
     const controller = new AbcPracticeController(noPicker);
     controller.loadText('t.abc', FINGERED);
     controller.setStyle('wait');
     controller.start();
     const session = activeSession(controller.getViewState());
-    expect(session.finger).toEqual({ text: 'Finger 2', source: 'file' });
-    expect(session.score?.fingers?.[0]).toEqual({ finger: 2, source: 'file' });
-    expect(session.score?.fingers?.[1]).toEqual({ finger: 2, source: 'suggested' }); // B3
-    expect(session.score?.fingers?.[3]).toEqual({ finger: 0, source: 'suggested' }); // D4
+    expect(session.finger).toEqual({ text: 'Finger 2' });
+    expect(session.score?.fingers?.[0]).toEqual({ finger: 2 });
+    expect(session.score?.fingers?.[1]).toBeUndefined(); // B3
+    expect(session.score?.fingers?.[3]).toBeUndefined(); // D4, an open-string pitch
   });
 
-  it('says "Open string" for an open string and marks suggestions as such', () => {
+  it('says "Open string" for a written !0!', () => {
     const controller = new AbcPracticeController(noPicker);
-    controller.loadText('t.abc', 'X:1\nK:C\nD C\n');
+    controller.loadText('t.abc', 'X:1\nK:C\n!0!D C\n');
     controller.setStyle('wait');
     controller.start();
-    expect(activeSession(controller.getViewState()).finger).toEqual({
-      text: 'Open string',
-      source: 'suggested',
-    });
+    expect(activeSession(controller.getViewState()).finger).toEqual({ text: 'Open string' });
   });
 
-  it('shows nothing when switched off, and nothing for a note above first position', () => {
+  it('shows nothing when switched off, and nothing for a note the file leaves unmarked', () => {
     const off = new AbcPracticeController(noPicker);
     off.loadText('t.abc', FINGERED);
     off.setStyle('wait');
@@ -1123,16 +1120,16 @@ describe('AbcPracticeController: finger numbers', () => {
     expect(session.finger).toBeUndefined();
     expect(session.score?.fingers).toBeUndefined();
 
-    const high = new AbcPracticeController(noPicker);
-    high.loadText('t.abc', "X:1\nK:C\nc'\n");
-    high.setStyle('wait');
-    high.start();
-    expect(activeSession(high.getViewState()).finger).toBeUndefined();
+    const unmarked = new AbcPracticeController(noPicker);
+    unmarked.loadText('t.abc', 'X:1\nK:C\nD\n');
+    unmarked.setStyle('wait');
+    unmarked.start();
+    expect(activeSession(unmarked.getViewState()).finger).toBeUndefined();
   });
 
   it('follows the target through the piece', () => {
     const controller = new AbcPracticeController(noPicker);
-    controller.loadText('t.abc', FINGERED);
+    controller.loadText('t.abc', 'X:1\nM:4/4\nL:1/4\nQ:1/4=80\nK:C\n!2!A, !4!B, C D |]\n');
     controller.setStyle('wait');
     controller.start();
     const play = makePlayer(controller);
@@ -1141,7 +1138,7 @@ describe('AbcPracticeController: finger numbers', () => {
     play(voiced(HZ.B3), 20);
     const session = activeSession(controller.getViewState());
     expect(session.targetNoteLabel).toBe('B3');
-    expect(session.finger).toEqual({ text: 'Finger 2', source: 'suggested' });
+    expect(session.finger).toEqual({ text: 'Finger 4' });
   });
 
   it('are carried by the play-along run, or absent when off', () => {
@@ -1149,7 +1146,7 @@ describe('AbcPracticeController: finger numbers', () => {
     const run = (
       on.controller.getViewState() as Extract<AbcPracticeViewState, { phase: 'play-along' }>
     ).run;
-    expect(run.fingers?.[0]).toEqual({ finger: 2, source: 'file' });
+    expect(run.fingers?.[0]).toEqual({ finger: 2 });
     expect(on.controller.getPlayAlongView()!.targetNoteIndex).toBe(0);
 
     const off = playAlongHarness(FINGERED, (c) => c.setFingers(false));
@@ -1165,7 +1162,7 @@ describe('AbcPracticeController: finger numbers', () => {
     controller.setStyle('wait');
     controller.setTranspose(12);
     controller.start();
-    expect(activeSession(controller.getViewState()).finger?.source).toBe('suggested');
+    expect(activeSession(controller.getViewState()).finger).toBeUndefined();
   });
 });
 
@@ -1187,8 +1184,8 @@ describe('AbcPracticeController: finger numbers switch live', () => {
 
     controller.setFingers(true);
     session = activeSession(controller.getViewState());
-    expect(session.finger).toEqual({ text: 'Finger 2', source: 'file' });
-    expect(session.score?.fingers?.[0]).toEqual({ finger: 2, source: 'file' });
+    expect(session.finger).toEqual({ text: 'Finger 2' });
+    expect(session.score?.fingers?.[0]).toEqual({ finger: 2 });
   });
 
   it('mid-run, the play-along keeps its run and swaps the marks', () => {
@@ -1201,6 +1198,6 @@ describe('AbcPracticeController: finger numbers switch live', () => {
     expect(runOf().fingers).toBeUndefined();
     expect(runOf().runId).toBe(runId);
     h.controller.setFingers(true);
-    expect(runOf().fingers?.[0]).toEqual({ finger: 2, source: 'file' });
+    expect(runOf().fingers?.[0]).toEqual({ finger: 2 });
   });
 });

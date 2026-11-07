@@ -89,8 +89,8 @@ export interface SequenceNote {
   readonly sourceString?: ViolinStringName;
   /**
    * The finger (1-4, or 0 for an open string) the ABC file itself writes for this note
-   * (`!2!`). `undefined` for generated notes and for notes the file leaves unmarked;
-   * see `fingerMarkFor` for what the app shows in that case.
+   * (`!2!`). `undefined` for generated notes and for notes the file leaves unmarked,
+   * which then show no finger number (see `fingerMarkFor`).
    */
   readonly finger?: number;
   /**

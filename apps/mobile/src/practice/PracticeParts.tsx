@@ -262,11 +262,7 @@ export function SessionPanel({
         {/* Finger line: under the letter name, or under a staff that cannot carry the digits
             (the score window draws its own digits over the notes). */}
         {session.finger !== undefined && !(showStaff && session.score) && (
-          <Text
-            style={[styles.finger, session.finger.source === 'suggested' && styles.fingerSuggested]}
-          >
-            {session.finger.text}
-          </Text>
+          <Text style={styles.finger}>{session.finger.text}</Text>
         )}
 
         {/* Live feedback + dwell bar: reused verbatim by Drilling as of
@@ -386,10 +382,6 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     textAlign: 'center',
     marginTop: 4,
-  },
-  fingerSuggested: {
-    color: '#6b7280',
-    fontStyle: 'italic',
   },
   upcoming: {
     fontFamily: 'Menlo, monospace',

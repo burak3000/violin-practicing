@@ -110,7 +110,7 @@ export interface PracticeSessionAbcOptions {
    * would show the wrong neighbours.
    */
   readonly piece?: AbcPiece;
-  /** Show finger numbers (from the file, else a first-position suggestion): a line under the letter name and digits on the score. */
+  /** Show the finger numbers the file writes: a line under the letter name and digits on the score. */
   readonly fingers?: boolean;
 }
 
@@ -128,10 +128,9 @@ export interface PracticeSessionScore {
   readonly fingers?: readonly (FingerMark | undefined)[];
 }
 
-/** The finger of the target note, as words ("Finger 2", "Open string"); `source` tells a number the file wrote from a suggestion. */
+/** The finger the file writes for the target note, as words ("Finger 2", "Open string"). */
 export interface PracticeSessionFinger {
   readonly text: string;
-  readonly source: 'file' | 'suggested';
 }
 
 /**
@@ -284,7 +283,7 @@ export class PracticeSessionRunner {
 
   private fingerOf(note: SequenceNote): PracticeSessionFinger | undefined {
     const mark = this.fingerMarks ? fingerMarkFor(note) : undefined;
-    return mark ? { text: describeFinger(mark), source: mark.source } : undefined;
+    return mark ? { text: describeFinger(mark) } : undefined;
   }
 
   /** Finger numbers on or off right now, mid-session included: only the display changes, the attempt in progress is untouched. */

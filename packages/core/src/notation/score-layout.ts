@@ -102,9 +102,8 @@ export type ScorePart =
   | 'tie'
   | 'rest'
   | 'tuplet'
-  /** A violin finger number over a note: written in the file, or one worked out by `suggestFinger`. */
-  | 'finger'
-  | 'finger-suggested';
+  /** A violin finger number over a note, as written in the ABC file. */
+  | 'finger';
 
 /**
  * One thing to draw, in staff-space coordinates. The list is flat and in draw
@@ -1741,7 +1740,7 @@ function emitFingers(
       glyph,
       p.x + p.w / 2 - STAFF_GLYPHS[glyph].width / 2,
       centerY - (dTop + dBottom) / 2,
-      mark.source === 'file' ? 'finger' : 'finger-suggested',
+      'finger',
       noteIndex,
     );
   }

@@ -592,20 +592,12 @@ button:disabled {
   color: #1a1a1a;
 }
 
-.score [data-part='finger-suggested'] {
-  color: #6b7280;
-}
-
 /* The finger line under the big note name (Letters display of an ABC piece). */
 .pp-finger {
   min-height: 1.4em;
   font-size: 1.1rem;
   color: #1a1a1a;
   text-align: center;
-}
-
-.pp-finger[data-source='suggested'] {
-  color: #6b7280;
 }
 
 .score [data-state='due'] {

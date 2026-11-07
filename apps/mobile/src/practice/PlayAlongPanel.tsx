@@ -257,9 +257,7 @@ function LettersStage({
       >
         {view.targetLabel.length > 0 ? view.targetLabel : '—'}
       </Text>
-      <Text style={[styles.finger, mark?.source === 'suggested' && styles.fingerSuggested]}>
-        {describeFinger(mark) || ' '}
-      </Text>
+      <Text style={styles.finger}>{describeFinger(mark) || ' '}</Text>
       <Text style={styles.upcoming}>
         {view.upcomingLabels.length > 0 ? `Next: ${view.upcomingLabels.join(' ')}` : ' '}
       </Text>
@@ -406,10 +404,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#1a1a1a',
     textAlign: 'center',
-  },
-  fingerSuggested: {
-    color: '#6b7280',
-    fontStyle: 'italic',
   },
   targetLabel: {
     fontSize: 64,

@@ -1,9 +1,0 @@
-X:1
-T:G Major Scale - 1 Octave in Groups of Three
-C:Exercise (level 9 of 13, easy to hard)
-M:4/4
-L:1/8
-Q:1/4=60
-N:Triplet groups (G A B, A B C, B C D ...) up, then down in reverse.
-K:G
-(3G,A,B, (3A,B,C (3B,CD (3CDE | (3DEF (3EFG (3GFE (3FED | (3EDC (3DCB, (3CB,A, (3B,A,G, |]

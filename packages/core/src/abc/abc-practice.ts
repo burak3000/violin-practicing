@@ -172,7 +172,7 @@ export function buildAbcPracticeSequence(
     // Keep the written spelling (B-flat stays B-flat; octave shifts don't change it).
     spelling: transposeSpelling(voice.spellings[i]!, transposeSemitones),
     // The file's finger numbers were written for the sheet's own pitches: after any transposition
-    // the notes sit on other strings, so they no longer apply (a suggestion is computed instead).
+    // the notes sit on other strings, so they no longer apply and none are shown.
     ...(transposeSemitones === 0 && voice.fingers[i] !== undefined
       ? { finger: voice.fingers[i]! }
       : {}),

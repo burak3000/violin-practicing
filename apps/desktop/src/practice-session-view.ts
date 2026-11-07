@@ -260,8 +260,6 @@ export class PracticeSessionView {
     if (!this.el.finger) return;
     const mark = this.showFingers && target ? fingerMarkFor(target) : undefined;
     this.el.finger.textContent = describeFinger(mark);
-    if (mark) this.el.finger.dataset.source = mark.source;
-    else delete this.el.finger.dataset.source;
   }
 
   setNoteDisplay(display: NoteDisplay): void {

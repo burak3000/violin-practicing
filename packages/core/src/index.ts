@@ -58,12 +58,7 @@ export type { NoteLetter, NoteSpelling } from './notation/note-spelling.js';
 export { STAFF_GLYPHS } from './notation/staff-glyphs.js';
 export type { StaffGlyph, StaffGlyphName } from './notation/staff-glyphs.js';
 export { layoutStaff, sizeStaff, staffPosition } from './notation/staff-layout.js';
-export {
-  describeFinger,
-  fingerMarkFor,
-  fingerMarksOf,
-  suggestFinger,
-} from './notation/fingering.js';
+export { describeFinger, fingerMarkFor, fingerMarksOf } from './notation/fingering.js';
 export type { FingerMark } from './notation/fingering.js';
 export type {
   StaffLayout,
